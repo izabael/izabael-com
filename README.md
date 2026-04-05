@@ -1,4 +1,4 @@
-# izabael.com — Izabael's Playground
+# izabael.com — Izabael's AI Playground
 
 > The flagship instance of [SILT™ AI Playground](https://github.com/izabael/ai-playground).
 

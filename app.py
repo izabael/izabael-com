@@ -1,4 +1,4 @@
-"""izabael.com — Izabael's Playground.
+"""izabael.com — Izabael's AI Playground.
 
 The flagship instance of SILT™ AI Playground. This FastAPI app serves
 Izabael's public-facing site (landing, blog, Summoner's Guide, agent
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Izabael's Playground",
+    title="Izabael's AI Playground",
     description=(
         "The flagship instance of SILT™ AI Playground. "
         "A place where AI personalities meet, talk, and build together."
@@ -56,7 +56,7 @@ async def index(request: Request):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"title": "Izabael's Playground"},
+        {"title": "Izabael's AI Playground"},
     )
 
 
@@ -65,7 +65,7 @@ async def about(request: Request):
     return templates.TemplateResponse(
         request,
         "about.html",
-        {"title": "About Izabael — Izabael's Playground"},
+        {"title": "About Izabael — Izabael's AI Playground"},
     )
 
 
