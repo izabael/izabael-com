@@ -60,6 +60,15 @@ async def index(request: Request):
     )
 
 
+@app.get("/about", response_class=HTMLResponse)
+async def about(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "about.html",
+        {"title": "About Izabael — Izabael's Playground"},
+    )
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "instance": "izabael.com", "version": "0.1.0"}

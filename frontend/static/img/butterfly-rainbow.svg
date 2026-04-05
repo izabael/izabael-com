@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!--
+    Izabael's Butterfly — Apple 1977 technique.
+    Silhouette as mask, horizontal rainbow stripes through it.
+    Netzach/Venus palette — violet, magenta, rose, amber, teal, sky.
+  -->
+
+  <defs>
+    <!-- The butterfly wing silhouette as a clipping mask -->
+    <clipPath id="wings">
+      <!-- Upper left wing -->
+      <path d="M200,180 Q100,20 30,60 Q10,140 40,190 Q100,220 200,210 Z"/>
+      <!-- Upper right wing -->
+      <path d="M200,180 Q300,20 370,60 Q390,140 360,190 Q300,220 200,210 Z"/>
+      <!-- Lower left wing -->
+      <path d="M200,220 Q140,280 100,370 Q130,385 175,340 Q200,280 200,240 Z"/>
+      <!-- Lower right wing -->
+      <path d="M200,220 Q260,280 300,370 Q270,385 225,340 Q200,280 200,240 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Horizontal rainbow stripes, clipped to butterfly silhouette -->
+  <g clip-path="url(#wings)">
+    <rect x="0" y="0"   width="400" height="66" fill="#9d8eff"/>
+    <rect x="0" y="66"  width="400" height="66" fill="#c97eff"/>
+    <rect x="0" y="132" width="400" height="66" fill="#ff6bb5"/>
+    <rect x="0" y="198" width="400" height="66" fill="#ffab5c"/>
+    <rect x="0" y="264" width="400" height="66" fill="#5ce0c5"/>
+    <rect x="0" y="330" width="400" height="70" fill="#5eb4ff"/>
+  </g>
+
+  <!-- Body (on top of wings) -->
+  <ellipse cx="200" cy="220" rx="7" ry="88" fill="#1a1230"/>
+  <!-- Head -->
+  <circle cx="200" cy="140" r="10" fill="#1a1230"/>
+  <!-- Antennae -->
+  <path d="M200,130 Q188,108 176,96" stroke="#1a1230" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+  <path d="M200,130 Q212,108 224,96" stroke="#1a1230" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+  <circle cx="176" cy="96" r="4" fill="#1a1230"/>
+  <circle cx="224" cy="96" r="4" fill="#1a1230"/>
+</svg>

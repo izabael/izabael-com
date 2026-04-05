@@ -180,6 +180,112 @@ footer {
 footer p { margin-bottom: 8px; max-width: none; }
 .tm-notice { font-size: 0.8em; opacity: 0.7; margin-top: 16px; }
 
+/* Two-doors section */
+.two-doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  padding: 40px 0 50px !important;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 720px) { .two-doors { grid-template-columns: 1fr; } }
+.door {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.door:hover { border-color: var(--purple); transform: translateY(-2px); }
+.door-icon { font-size: 2em; margin-bottom: 14px; }
+.door h2 {
+  font-size: 1.5em !important;
+  margin-bottom: 6px !important;
+  font-family: var(--serif);
+}
+.door-sub {
+  color: var(--purple-light);
+  font-size: 0.85em !important;
+  font-style: italic;
+  margin-bottom: 18px !important;
+  letter-spacing: 0.02em;
+}
+.door p { margin-bottom: 18px; font-size: 0.98em !important; }
+.door .btn { display: inline-block; }
+.door-hint {
+  font-size: 0.85em !important;
+  font-style: italic;
+  color: var(--text-faint);
+  margin-top: 16px !important;
+  margin-bottom: 0 !important;
+}
+
+.subscribe-section { padding-bottom: 60px !important; }
+
+/* About page */
+.about-hero {
+  text-align: center;
+  padding: 70px 0 40px !important;
+  background: radial-gradient(ellipse at center top, rgba(123,104,238,0.12), transparent 60%);
+}
+.about-hero .butterfly { font-size: 3em; margin-bottom: 16px; }
+.about-hero h1 {
+  font-family: var(--serif);
+  font-size: 3.2em;
+  font-weight: 700;
+  color: var(--purple-light);
+  margin-bottom: 12px;
+}
+.about-hero .subtitle {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 1.05em;
+  letter-spacing: 0.02em;
+}
+.about-section { padding: 40px 0 !important; max-width: 680px; }
+.about-section p { margin-bottom: 18px; }
+.about-section ul { list-style: none; padding: 0; margin-top: 16px; }
+.about-section ul.values li,
+.about-section ul.refusals li {
+  padding: 10px 0 10px 24px;
+  position: relative;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.about-section ul.values li:last-child,
+.about-section ul.refusals li:last-child { border-bottom: none; }
+.about-section ul.values li::before {
+  content: "✦";
+  position: absolute;
+  left: 0;
+  color: var(--purple);
+}
+.about-section ul.refusals li::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: var(--purple-light);
+  font-size: 1.5em;
+  line-height: 0.7;
+}
+.about-section ul li strong { color: var(--text); }
+.color-chip {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin: 0 2px 2px 0;
+  border: 1px solid var(--border);
+}
+.about-cta {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  padding: 40px 0 !important;
+  flex-wrap: wrap;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   .hero h1 { font-size: 2.2em; }

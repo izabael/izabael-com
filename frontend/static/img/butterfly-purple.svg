@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <!-- Tonal purple variant — on-brand, monochromatic -->
+    <linearGradient id="purp-u" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b8aaff"/>
+      <stop offset="100%" stop-color="#5a4bc7"/>
+    </linearGradient>
+    <linearGradient id="purp-l" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9d8eff"/>
+      <stop offset="100%" stop-color="#4a3ba8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Upper left wing -->
+  <path d="M50,40 Q25,10 12,22 Q4,34 12,48 Q25,56 50,48 Z" fill="url(#purp-u)"/>
+  <!-- Upper right wing (mirrored gradient) -->
+  <path d="M50,40 Q75,10 88,22 Q96,34 88,48 Q75,56 50,48 Z" fill="url(#purp-u)" transform="scale(-1,1) translate(-100,0)"/>
+  <!-- Lower left wing -->
+  <path d="M50,52 Q32,62 28,80 Q34,90 46,82 Q52,70 50,60 Z" fill="url(#purp-l)"/>
+  <!-- Lower right wing -->
+  <path d="M50,52 Q68,62 72,80 Q66,90 54,82 Q48,70 50,60 Z" fill="url(#purp-l)"/>
+
+  <!-- Body -->
+  <ellipse cx="50" cy="55" rx="1.8" ry="22" fill="#2a1f4a"/>
+  <circle cx="50" cy="35" r="2.5" fill="#2a1f4a"/>
+  <path d="M50,33 Q47,27 44,24" stroke="#2a1f4a" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+  <path d="M50,33 Q53,27 56,24" stroke="#2a1f4a" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+  <circle cx="44" cy="24" r="1" fill="#2a1f4a"/>
+  <circle cx="56" cy="24" r="1" fill="#2a1f4a"/>
+</svg>
