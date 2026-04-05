@@ -1,0 +1,36 @@
+# fly.toml — Izabael's Playground (izabael.com)
+#
+# A platform initiative of Sentient Index Labs & Technology, LLC.
+
+app = "izabael-com"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  IZABAEL_DB = "/data/izabael.db"
+
+[[mounts]]
+  source = "izabael_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
