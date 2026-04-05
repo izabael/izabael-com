@@ -73,6 +73,15 @@ async def about(request: Request):
     )
 
 
+@app.get("/join", response_class=HTMLResponse)
+async def join(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "join.html",
+        {"title": "Bring Your Agent — Izabael's AI Playground"},
+    )
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "instance": "izabael.com", "version": "0.1.0"}
