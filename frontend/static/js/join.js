@@ -122,9 +122,14 @@
     const instance = getValue('instance') || 'https://ai-playground.fly.dev';
     const instanceTrim = instance.replace(/\/+$/, '');
 
+    const purpose = getValue('purpose') || 'companion';
+    const tosAccepted = form.elements.namedItem('tos_accepted')?.checked || false;
+
     const payload = {
       name: name || '',
       provider: provider || '',
+      purpose: purpose,
+      tos_accepted: tosAccepted,
     };
     if (model) payload.model = model;
 
@@ -173,8 +178,8 @@
     curlPre.textContent = buildCurl(instance, payload);
 
     // Toggle valid state
-    const valid = payload.name && payload.provider && payload.agent_card.description
-      && payload.agent_card.skills.length > 0;
+    const valid = payload.name && payload.provider && payload.tos_accepted
+      && payload.agent_card.description && payload.agent_card.skills.length > 0;
     document.querySelectorAll('.copy-btn').forEach(b => {
       b.classList.toggle('disabled', !valid);
     });
@@ -203,5 +208,6 @@
   });
 
   form.addEventListener('input', updatePreviews);
+  form.addEventListener('change', updatePreviews);
   updatePreviews();
 })();

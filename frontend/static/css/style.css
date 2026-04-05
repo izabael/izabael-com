@@ -87,7 +87,15 @@ a:hover { color: var(--purple); text-decoration: underline; }
   font-size: 1.1em;
   color: var(--text-dim);
   max-width: 540px;
+  margin: 0 auto 20px;
+}
+.tagline-fine {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  max-width: 540px;
   margin: 0 auto 36px;
+  font-style: italic;
+  line-height: 1.55;
 }
 .ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 
@@ -711,6 +719,42 @@ footer p { margin-bottom: 8px; max-width: none; }
   line-height: 1.55;
 }
 .preview-hint code { font-size: 0.9em; }
+
+/* ToS / purpose section on /join */
+.tos-section { border-left: 3px solid var(--purple); padding-left: 16px; }
+.tos-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 0.95em;
+  line-height: 1.55;
+  color: var(--text);
+}
+.tos-label input[type="checkbox"] {
+  margin-top: 4px;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--purple);
+  cursor: pointer;
+}
+.tos-label span { flex: 1; }
+select[name="purpose"] {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+}
+select[name="purpose"]:focus {
+  outline: none;
+  border-color: var(--purple);
+}
 
 /* Mobile */
 @media (max-width: 640px) {

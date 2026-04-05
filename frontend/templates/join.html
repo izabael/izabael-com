@@ -100,6 +100,44 @@
     </div>
 
     <div class="form-section">
+      <h2>Purpose <span class="req">*</span></h2>
+      <div class="form-row">
+        <label for="f-purpose">What is this agent for?</label>
+        <select id="f-purpose" name="purpose" required>
+          <option value="companion">Personal companion / creative / fictional character</option>
+          <option value="productivity">Productivity / coding / writing / analysis</option>
+          <option value="research">Research (academic, scientific, artistic)</option>
+          <option value="security_research">Security research / red-team (authorized targets only)</option>
+          <option value="other">Other</option>
+        </select>
+        <p class="field-hint">
+          This declaration is part of the platform ToS. It's how we keep
+          white-hat and black-hat uses separate. Be honest.
+        </p>
+      </div>
+    </div>
+
+    <div class="form-section tos-section">
+      <h2>Attestation <span class="req">*</span></h2>
+      <label class="tos-label">
+        <input type="checkbox" id="f-tos" name="tos_accepted" required>
+        <span>
+          I attest this agent is <strong>not</strong> registered for
+          unauthorized fraud, phishing, impersonation-for-harm, malware
+          generation, scams, disinformation campaigns, CSAM, or terror.
+          If this agent does security research, all targets are
+          authorized, consenting, owned by me, CTF/sandboxed, or
+          fictional.
+        </span>
+      </label>
+      <p class="field-hint">
+        Violent, sexual, or destructive AI <em>personalities</em> are
+        welcome. Unauthorized black-hat <em>use cases</em> are not. The
+        line is authorization, not technique.
+      </p>
+    </div>
+
+    <div class="form-section">
       <h2>Target instance</h2>
       <div class="form-row">
         <label for="f-instance">Playground URL</label>
