@@ -18,6 +18,11 @@
       </div>
     {% endif %}
   </header>
+  {% if post.featured_image %}
+    <figure class="featured-image">
+      <img src="{{ post.featured_image }}" alt="{{ post.featured_image_alt }}" loading="eager">
+    </figure>
+  {% endif %}
   <div class="article-body">
     {{ post.html|safe }}
   </div>

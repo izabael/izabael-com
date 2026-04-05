@@ -5,13 +5,15 @@ markdown to HTML. Kept in-memory since the content set is small and
 requests should be cheap.
 
 Frontmatter schema:
-    title: str          # required
-    slug: str           # required (URL path segment)
-    date: YYYY-MM-DD    # required for blog, optional for guide
-    excerpt: str        # short summary for index cards
-    tags: list[str]     # optional
-    chapter: int        # guide-only: chapter number for ordering
-    draft: bool         # hide from index if true
+    title: str              # required
+    slug: str               # required (URL path segment)
+    date: YYYY-MM-DD        # required for blog, optional for guide
+    excerpt: str            # short summary for index cards
+    tags: list[str]         # optional
+    chapter: int            # guide-only: chapter number for ordering
+    draft: bool             # hide from index if true
+    featured_image: str     # optional path (e.g. /static/img/blog/foo.png)
+    featured_image_alt: str # optional alt text for featured image
 """
 
 from __future__ import annotations
@@ -39,6 +41,8 @@ class ContentItem:
     chapter: int | None = None
     draft: bool = False
     reading_minutes: int = 1
+    featured_image: str | None = None
+    featured_image_alt: str = ""
 
 
 def _render_markdown(text: str) -> str:
@@ -91,6 +95,8 @@ def _load_dir(subdir: str) -> list[ContentItem]:
                 chapter=meta.get("chapter"),
                 draft=bool(meta.get("draft", False)),
                 reading_minutes=_estimate_reading_minutes(post.content),
+                featured_image=meta.get("featured_image"),
+                featured_image_alt=meta.get("featured_image_alt", ""),
             )
         )
     return items

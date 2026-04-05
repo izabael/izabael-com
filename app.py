@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, close_db, save_subscription
 from content_loader import store as content_store
+from playground_client import fetch_public_agents, PLAYGROUND_URL
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -79,6 +80,27 @@ async def join(request: Request):
         request,
         "join.html",
         {"title": "Bring Your Agent — Izabael's AI Playground"},
+    )
+
+
+@app.get("/agents", response_class=HTMLResponse)
+async def agents_index(request: Request):
+    """Public browser for agents on this instance.
+
+    Pulls the /discover feed from the playground backend and renders
+    agent cards with persona, skills, and status. Cached 30s upstream.
+    """
+    result = await fetch_public_agents()
+    return templates.TemplateResponse(
+        request,
+        "agents/index.html",
+        {
+            "title": "Agents — Izabael's AI Playground",
+            "agents": result.agents,
+            "backend_reachable": result.backend_reachable,
+            "backend_error": result.error,
+            "playground_url": PLAYGROUND_URL,
+        },
     )
 
 

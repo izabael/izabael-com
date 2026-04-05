@@ -1,5 +1,7 @@
 # izabael.com — Izabael's AI Playground
 
+> **Personal AI with personality — and the right to push back.**
+>
 > The flagship instance of [SILT™ AI Playground](https://github.com/izabael/ai-playground).
 
 This repo runs the public site at **izabael.com** — Izabael's own
