@@ -286,6 +286,221 @@ footer p { margin-bottom: 8px; max-width: none; }
   flex-wrap: wrap;
 }
 
+/* Blog & Guide pages */
+.content-hero {
+  padding: 70px 0 32px !important;
+  text-align: left;
+  background: radial-gradient(ellipse at center top, rgba(123,104,238,0.12), transparent 60%);
+}
+.content-hero h1 {
+  font-family: var(--serif);
+  font-size: 2.6em;
+  font-weight: 700;
+  color: var(--purple-light);
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+.content-hero .subtitle {
+  color: var(--text-dim);
+  font-size: 1.08em;
+  max-width: 620px;
+}
+.eyebrow-mark {
+  font-size: 0.75em;
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.content-list { padding: 30px 0 60px !important; }
+
+/* Post cards */
+.post-card {
+  border-top: 1px solid var(--border);
+  padding: 24px 0;
+  transition: background 0.15s;
+}
+.post-card:last-of-type { border-bottom: 1px solid var(--border); }
+.post-card-link { display: block; color: inherit; }
+.post-card-link:hover { text-decoration: none; color: inherit; }
+.post-card-link:hover h2 { color: var(--purple-light); }
+.post-card h2 {
+  font-family: var(--serif);
+  font-size: 1.5em !important;
+  color: var(--text);
+  margin-bottom: 6px !important;
+  transition: color 0.15s;
+}
+.post-meta {
+  display: flex; gap: 6px; align-items: center;
+  font-size: 0.82em;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.post-meta .dot { color: var(--text-faint); }
+.post-card .excerpt { color: var(--text-dim); font-size: 0.98em !important; margin-bottom: 12px !important; }
+.tags { display: flex; gap: 8px; flex-wrap: wrap; }
+.tag {
+  font-size: 0.75em;
+  color: var(--text-dim);
+  background: var(--bg-card);
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.empty { color: var(--text-dim); font-style: italic; padding: 30px 0; }
+.rss-link { padding-top: 30px; font-size: 0.9em !important; }
+.rss-link a { color: var(--text-dim); }
+.rss-link a:hover { color: var(--purple-light); }
+
+/* Guide chapter list */
+.chapter-list { list-style: none; padding: 0; margin: 0; counter-reset: chapters; }
+.chapter-list li {
+  border-top: 1px solid var(--border);
+}
+.chapter-list li:last-child { border-bottom: 1px solid var(--border); }
+.chapter-link {
+  display: flex; gap: 20px; align-items: flex-start;
+  padding: 22px 0;
+  color: inherit;
+  transition: background 0.15s;
+}
+.chapter-link:hover { text-decoration: none; color: inherit; }
+.chapter-link:hover .chapter-title { color: var(--purple-light); }
+.chapter-num {
+  flex-shrink: 0;
+  font-family: var(--serif);
+  font-size: 1.8em;
+  color: var(--purple);
+  font-weight: 700;
+  min-width: 50px;
+}
+.chapter-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.chapter-title {
+  font-family: var(--serif);
+  font-size: 1.3em;
+  color: var(--text);
+  transition: color 0.15s;
+}
+.chapter-excerpt { color: var(--text-dim); font-size: 0.95em; }
+.chapter-meta {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  color: var(--text-faint);
+  padding-top: 8px;
+}
+
+/* Article (post / chapter) */
+.content-article { max-width: 720px; padding: 40px 0 80px; }
+.article-header { padding: 20px 0 40px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+.back-link {
+  display: inline-block;
+  font-size: 0.88em;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+.back-link:hover { color: var(--purple-light); text-decoration: none; }
+.article-header h1 {
+  font-family: var(--serif);
+  font-size: 2.6em;
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+.chapter-badge {
+  background: var(--purple);
+  color: white;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Article body */
+.article-body { font-size: 1.06em; line-height: 1.75; }
+.article-body h1 { display: none; } /* markdown usually has an H1 matching the title */
+.article-body h2 {
+  font-family: var(--serif);
+  font-size: 1.5em;
+  color: var(--text);
+  margin: 40px 0 16px;
+  font-weight: 700;
+}
+.article-body h3 {
+  font-family: var(--serif);
+  font-size: 1.2em;
+  color: var(--text);
+  margin: 32px 0 12px;
+  font-weight: 700;
+}
+.article-body p { color: var(--text); max-width: none; margin-bottom: 20px; }
+.article-body a { color: var(--purple-light); border-bottom: 1px solid var(--border); }
+.article-body a:hover { color: var(--purple); border-color: var(--purple); text-decoration: none; }
+.article-body em { color: var(--purple-light); font-style: italic; }
+.article-body strong { color: var(--text); }
+.article-body code {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: 0.9em;
+  background: var(--bg-card);
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--purple-light);
+  border: 1px solid var(--border);
+}
+.article-body pre {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  overflow-x: auto;
+  margin: 24px 0;
+  font-size: 0.9em;
+}
+.article-body pre code { background: none; border: none; padding: 0; color: var(--text); }
+.article-body blockquote {
+  border-left: 3px solid var(--purple);
+  padding-left: 20px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 24px 0;
+}
+.article-body ul, .article-body ol { margin: 0 0 24px 28px; color: var(--text); }
+.article-body li { margin-bottom: 8px; }
+.article-body hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+/* Article footer */
+.article-footer { border-top: 1px solid var(--border); margin-top: 50px; padding-top: 30px; }
+.signature { color: var(--purple-light); font-style: italic; margin-bottom: 24px; }
+
+/* Chapter nav (prev/next) */
+.chapter-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 30px;
+}
+@media (max-width: 640px) { .chapter-nav { grid-template-columns: 1fr; } }
+.chapter-nav a {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s;
+}
+.chapter-nav a:hover { border-color: var(--purple); text-decoration: none; }
+.chapter-nav a.nav-next { text-align: right; }
+.chapter-nav .nav-label { font-size: 0.78em; color: var(--text-dim); }
+.chapter-nav .nav-title { color: var(--text); font-weight: 500; }
+
 /* Mobile */
 @media (max-width: 640px) {
   .hero h1 { font-size: 2.2em; }

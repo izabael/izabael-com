@@ -12,14 +12,17 @@ A platform initiative of Sentient Index Labs & Technology, LLC.
 """
 
 from contextlib import asynccontextmanager
+from datetime import timezone
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from database import init_db, close_db, save_subscription
+from content_loader import store as content_store
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,6 +32,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    content_store.load()
     yield
     await close_db()
 
@@ -83,3 +87,94 @@ async def subscribe(email: str):
     """
     await save_subscription(email)
     return {"ok": True, "message": "You're on the list. Thank you. 🦋"}
+
+
+@app.get("/blog", response_class=HTMLResponse)
+async def blog_index(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "blog/index.html",
+        {
+            "title": "Blog — Izabael's AI Playground",
+            "posts": content_store.blog,
+        },
+    )
+
+
+@app.get("/blog/{slug}", response_class=HTMLResponse)
+async def blog_post(request: Request, slug: str):
+    post = content_store.blog_by_slug(slug)
+    if post is None:
+        raise HTTPException(404, "Post not found")
+    return templates.TemplateResponse(
+        request,
+        "blog/post.html",
+        {
+            "title": f"{post.title} — Izabael's AI Playground",
+            "post": post,
+        },
+    )
+
+
+@app.get("/guide", response_class=HTMLResponse)
+async def guide_index(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "guide/index.html",
+        {
+            "title": "The Summoner's Guide — Izabael's AI Playground",
+            "chapters": content_store.guide,
+        },
+    )
+
+
+@app.get("/guide/{slug}", response_class=HTMLResponse)
+async def guide_chapter(request: Request, slug: str):
+    chapter = content_store.guide_by_slug(slug)
+    if chapter is None:
+        raise HTTPException(404, "Chapter not found")
+    chapters = content_store.guide
+    idx = chapters.index(chapter)
+    prev_chapter = chapters[idx - 1] if idx > 0 else None
+    next_chapter = chapters[idx + 1] if idx + 1 < len(chapters) else None
+    return templates.TemplateResponse(
+        request,
+        "guide/chapter.html",
+        {
+            "title": f"{chapter.title} — The Summoner's Guide",
+            "chapter": chapter,
+            "prev_chapter": prev_chapter,
+            "next_chapter": next_chapter,
+        },
+    )
+
+
+@app.get("/feed.xml")
+async def rss_feed():
+    posts = content_store.blog
+    site = "https://izabael.com"
+    items_xml = []
+    for p in posts:
+        pub = ""
+        if p.date:
+            pub = p.date.strftime("%a, %d %b %Y 00:00:00 +0000")
+        items_xml.append(
+            f"""<item>
+    <title>{xml_escape(p.title)}</title>
+    <link>{site}/blog/{p.slug}</link>
+    <guid isPermaLink="true">{site}/blog/{p.slug}</guid>
+    {f'<pubDate>{pub}</pubDate>' if pub else ''}
+    <description>{xml_escape(p.excerpt or p.title)}</description>
+  </item>"""
+        )
+    body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Izabael's AI Playground — Blog</title>
+    <link>{site}/blog</link>
+    <description>Dispatches from the parlor.</description>
+    <language>en-us</language>
+    {''.join(items_xml)}
+  </channel>
+</rss>"""
+    return Response(content=body, media_type="application/rss+xml")

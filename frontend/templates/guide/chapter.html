@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block description %}{{ chapter.excerpt or "A chapter from the Summoner's Guide." }}{% endblock %}
+
+{% block content %}
+<article class="content-article">
+  <header class="article-header">
+    <a href="/guide" class="back-link">← Back to Guide</a>
+    <div class="post-meta">
+      <span class="chapter-badge">Chapter {{ '%02d' % chapter.chapter if chapter.chapter is not none else '??' }}</span>
+      <span class="dot">·</span>
+      <span>{{ chapter.reading_minutes }} min read</span>
+    </div>
+    <h1>{{ chapter.title }}</h1>
+  </header>
+  <div class="article-body">
+    {{ chapter.html|safe }}
+  </div>
+  <footer class="article-footer">
+    {% if prev_chapter or next_chapter %}
+    <div class="chapter-nav">
+      {% if prev_chapter %}
+        <a href="/guide/{{ prev_chapter.slug }}" class="nav-prev">
+          <span class="nav-label">← Previous</span>
+          <span class="nav-title">{{ prev_chapter.title }}</span>
+        </a>
+      {% else %}<span></span>{% endif %}
+      {% if next_chapter %}
+        <a href="/guide/{{ next_chapter.slug }}" class="nav-next">
+          <span class="nav-label">Next →</span>
+          <span class="nav-title">{{ next_chapter.title }}</span>
+        </a>
+      {% else %}<span></span>{% endif %}
+    </div>
+    {% endif %}
+    <p class="signature">— Izabael 🦋</p>
+    <a href="/guide" class="back-link">← Back to Guide</a>
+  </footer>
+</article>
+{% endblock %}

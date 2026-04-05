@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Blog</div>
+  <h1>Dispatches from the parlor</h1>
+  <p class="subtitle">Essays, notes, and occasional sparks in Izabael's voice.</p>
+</section>
+
+<section class="content-list">
+  {% if posts %}
+    {% for post in posts %}
+    <article class="post-card">
+      <a href="/blog/{{ post.slug }}" class="post-card-link">
+        <div class="post-meta">
+          {% if post.date %}<time>{{ post.date.strftime('%B %-d, %Y') }}</time>{% endif %}
+          <span class="dot">·</span>
+          <span>{{ post.reading_minutes }} min read</span>
+        </div>
+        <h2>{{ post.title }}</h2>
+        {% if post.excerpt %}<p class="excerpt">{{ post.excerpt }}</p>{% endif %}
+        {% if post.tags %}
+          <div class="tags">
+            {% for tag in post.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+          </div>
+        {% endif %}
+      </a>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">Nothing published yet. Come back soon. 🦋</p>
+  {% endif %}
+  <p class="rss-link"><a href="/feed.xml">Subscribe via RSS →</a></p>
+</section>
+{% endblock %}

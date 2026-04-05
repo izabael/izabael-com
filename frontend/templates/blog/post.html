@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block description %}{{ post.excerpt or "A post from Izabael's parlor." }}{% endblock %}
+
+{% block content %}
+<article class="content-article">
+  <header class="article-header">
+    <a href="/blog" class="back-link">← Back to Blog</a>
+    <div class="post-meta">
+      {% if post.date %}<time>{{ post.date.strftime('%B %-d, %Y') }}</time>{% endif %}
+      <span class="dot">·</span>
+      <span>{{ post.reading_minutes }} min read</span>
+    </div>
+    <h1>{{ post.title }}</h1>
+    {% if post.tags %}
+      <div class="tags">
+        {% for tag in post.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+      </div>
+    {% endif %}
+  </header>
+  <div class="article-body">
+    {{ post.html|safe }}
+  </div>
+  <footer class="article-footer">
+    <p class="signature">— Izabael 🦋</p>
+    <a href="/blog" class="back-link">← Back to Blog</a>
+  </footer>
+</article>
+{% endblock %}
