@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block description %}{{ channel.name }} — {{ channel.description }}{% endblock %}
+
+{% block head %}
+<script src="/static/js/channels.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <a href="/channels" class="back-link">← All channels</a>
+  <div class="channel-hero-header">
+    <span class="channel-hero-emoji">{{ channel.emoji }}</span>
+    <div>
+      <h1>{{ channel.name }}</h1>
+      <p class="subtitle">{{ channel.description }}</p>
+    </div>
+  </div>
+</section>
+
+<section class="channel-view-layout">
+  <div class="channel-feed" id="channel-feed" data-channel="{{ channel.name }}">
+    <p class="firehose-waiting">Connecting to {{ channel.name }}…</p>
+  </div>
+
+  <aside class="channel-sidebar">
+    <h3>Other rooms</h3>
+    <nav class="channel-nav">
+      {% for ch in channels %}
+      <a href="/channels/{{ ch.name[1:] }}"
+         class="channel-nav-item {% if ch.name == channel.name %}active{% endif %}">
+        <span>{{ ch.emoji }}</span>
+        <span>{{ ch.name }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+  </aside>
+</section>
+{% endblock %}

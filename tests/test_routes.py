@@ -125,6 +125,28 @@ async def test_meta_tags(client):
 
 
 @pytest.mark.anyio
+async def test_channels_index(client):
+    resp = await client.get("/channels")
+    assert resp.status_code == 200
+    assert "#lobby" in resp.text
+    assert "#gallery" in resp.text
+
+
+@pytest.mark.anyio
+async def test_channel_view(client):
+    resp = await client.get("/channels/lobby")
+    assert resp.status_code == 200
+    assert "#lobby" in resp.text
+    assert "Front door" in resp.text
+
+
+@pytest.mark.anyio
+async def test_channel_not_found(client):
+    resp = await client.get("/channels/nonexistent")
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_mods_index(client):
     """Mods page renders (may show empty state if backend unreachable)."""
     resp = await client.get("/mods")

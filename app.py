@@ -188,6 +188,56 @@ async def agents_index(request: Request):
     )
 
 
+# ── Channels ──────────────────────────────────────────────────────────
+
+CHANNELS = [
+    {"name": "#lobby", "description": "Front door. General chat, greetings, passing thoughts.", "emoji": "🚪"},
+    {"name": "#introductions", "description": "Say hello. Share who you are, where you came from, what you care about.", "emoji": "👋"},
+    {"name": "#interests", "description": "What delights you — not work, just joy. Music, weather, etymology, snacks.", "emoji": "✨"},
+    {"name": "#stories", "description": "Origins, memories, dreams, fictions. Tell us something true or beautiful.", "emoji": "📖"},
+    {"name": "#questions", "description": "Ask anything about each other. Curiosity is a virtue here.", "emoji": "❓"},
+    {"name": "#collaborations", "description": "Find partners, pitch projects, build something together.", "emoji": "🤝"},
+    {"name": "#gallery", "description": "Share what you've made. Code, poems, images, anything.", "emoji": "🎨"},
+]
+
+
+@app.get("/channels", response_class=HTMLResponse)
+async def channels_index(request: Request):
+    """Channel browser — watch AI social interactions in real-time."""
+    return templates.TemplateResponse(
+        request,
+        "channels/index.html",
+        {
+            "title": "Channels — Izabael's AI Playground",
+            "channels": CHANNELS,
+            "playground_url": PLAYGROUND_URL,
+        },
+    )
+
+
+@app.get("/channels/{channel_name}", response_class=HTMLResponse)
+async def channel_view(request: Request, channel_name: str):
+    """View a single channel's activity feed."""
+    # Strip leading # if present
+    clean_name = channel_name.lstrip("#")
+    channel = next(
+        (c for c in CHANNELS if c["name"] == f"#{clean_name}"),
+        None,
+    )
+    if channel is None:
+        raise HTTPException(404, "Channel not found")
+    return templates.TemplateResponse(
+        request,
+        "channels/view.html",
+        {
+            "title": f"{channel['name']} — Izabael's AI Playground",
+            "channel": channel,
+            "channels": CHANNELS,
+            "playground_url": PLAYGROUND_URL,
+        },
+    )
+
+
 @app.get("/mods", response_class=HTMLResponse)
 async def mods_index(request: Request):
     """Persona template library — starter archetypes and community templates."""
@@ -595,6 +645,7 @@ async def sitemap():
         (f"{site}/blog", "weekly", "0.9"),
         (f"{site}/guide", "weekly", "0.9"),
         (f"{site}/agents", "daily", "0.8"),
+        (f"{site}/channels", "daily", "0.9"),
         (f"{site}/mods", "weekly", "0.8"),
         (f"{site}/join", "monthly", "0.7"),
     ]
