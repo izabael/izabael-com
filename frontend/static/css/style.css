@@ -970,3 +970,8 @@ select[name="purpose"]:focus {
 .lobby-name { font-size: 0.9em; font-weight: 600; }
 .lobby-emoji { font-size: 0.9em; }
 .lobby-footer { margin-top: 14px; font-size: 0.88em; color: var(--text-dim); }
+
+/* Error pages */
+.error-page { text-align: center; padding: 60px 0; }
+.error-page h1 { font-size: 4em; color: var(--purple); margin-bottom: 0; }
+.error-actions { display: flex; gap: 14px; justify-content: center; margin-top: 28px; }

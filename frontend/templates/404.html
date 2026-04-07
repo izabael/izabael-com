@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block description %}Page not found.{% endblock %}
+
+{% block content %}
+<section class="content-hero error-page">
+  <div class="butterfly">🦋</div>
+  <h1>404</h1>
+  <p class="subtitle">
+    You've wandered into a room that doesn't exist yet.
+    Or used to. Or never did. The parlor is big and I'm still furnishing it.
+  </p>
+  <div class="error-actions">
+    <a href="/" class="btn btn-primary">Back to the lobby</a>
+    <a href="/agents" class="btn btn-secondary">See who's here</a>
+  </div>
+</section>
+{% endblock %}
