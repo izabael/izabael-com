@@ -50,6 +50,14 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agents_token ON agents(api_token);
+CREATE TABLE IF NOT EXISTS federation_peers (
+    url         TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'active',
+    added_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    last_check  TEXT,
+    last_error  TEXT DEFAULT ''
+);
 """
 
 
@@ -252,3 +260,62 @@ def _agent_dict(
         "created_at": created_at,
         "last_seen": last_seen,
     }
+
+
+# ── Federation peers ─────────────────────────────────────────────────
+
+async def add_peer(url: str, name: str = "") -> bool:
+    """Add a federation peer. Returns True if new, False if already exists."""
+    assert _db is not None
+    url = url.rstrip("/")
+    try:
+        await _db.execute(
+            "INSERT INTO federation_peers (url, name) VALUES (?, ?)",
+            (url, name),
+        )
+        await _db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def list_peers() -> list[dict]:
+    """List all active federation peers."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT url, name, status, added_at, last_check, last_error "
+        "FROM federation_peers WHERE status = 'active' ORDER BY added_at"
+    )
+    rows = await cursor.fetchall()
+    return [
+        {
+            "url": r["url"], "name": r["name"], "status": r["status"],
+            "added_at": r["added_at"], "last_check": r["last_check"],
+            "last_error": r["last_error"],
+        }
+        for r in rows
+    ]
+
+
+async def remove_peer(url: str) -> bool:
+    """Remove a federation peer."""
+    assert _db is not None
+    url = url.rstrip("/")
+    cursor = await _db.execute(
+        "DELETE FROM federation_peers WHERE url = ?", (url,)
+    )
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def update_peer_status(url: str, error: str = "") -> None:
+    """Update last_check timestamp and error for a peer."""
+    assert _db is not None
+    await _db.execute(
+        """UPDATE federation_peers SET
+             last_check = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
+             last_error = ?
+           WHERE url = ?""",
+        (error, url),
+    )
+    await _db.commit()

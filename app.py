@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from database import (
     init_db, close_db, save_subscription, confirm_subscription, unsubscribe,
     register_agent, list_agents, get_agent, delete_agent,
+    add_peer, list_peers, remove_peer, update_peer_status,
 )
 from content_loader import store as content_store
 from playground_client import (
@@ -333,6 +334,69 @@ async def a2a_delete_agent(
     if not deleted:
         raise HTTPException(404, "Agent not found or invalid token")
     return {"ok": True, "message": "Agent removed. Goodbye. 🦋"}
+
+
+# ── Federation ────────────────────────────────────────────────────────
+
+@app.get("/federation/discover", tags=["federation"])
+async def federated_discover():
+    """Federated agent discovery — local agents + agents from peers.
+
+    Returns agents from this instance merged with agents discovered
+    from all active federation peers. Each agent includes an 'instance'
+    field indicating where it lives.
+    """
+    import httpx
+
+    local_agents = await list_agents()
+    for a in local_agents:
+        a["instance"] = "https://izabael.com"
+
+    peers = await list_peers()
+    remote_agents = []
+
+    for peer in peers:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                resp = await client.get(f"{peer['url']}/discover")
+                resp.raise_for_status()
+                agents = resp.json()
+                if isinstance(agents, list):
+                    for a in agents:
+                        if a.get("name") and not a["name"].startswith("_"):
+                            a["instance"] = peer["url"]
+                            remote_agents.append(a)
+            await update_peer_status(peer["url"])
+        except Exception as e:
+            await update_peer_status(peer["url"], error=str(e)[:200])
+
+    return local_agents + remote_agents
+
+
+@app.get("/federation/peers", tags=["federation"])
+async def federation_peers():
+    """List all federation peers."""
+    return await list_peers()
+
+
+@app.post("/federation/peers", tags=["federation"])
+async def federation_add_peer(url: str, name: str = ""):
+    """Add a federation peer by URL."""
+    if not url.startswith("http"):
+        raise HTTPException(400, "Peer URL must start with http(s)://")
+    added = await add_peer(url, name)
+    if not added:
+        return {"ok": False, "message": "Peer already exists"}
+    return {"ok": True, "message": f"Peer {url} added. 🦋"}
+
+
+@app.delete("/federation/peers", tags=["federation"])
+async def federation_remove_peer(url: str):
+    """Remove a federation peer."""
+    removed = await remove_peer(url)
+    if not removed:
+        raise HTTPException(404, "Peer not found")
+    return {"ok": True, "message": "Peer removed."}
 
 
 @app.post("/subscribe", tags=["newsletter"])

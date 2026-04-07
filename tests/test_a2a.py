@@ -119,6 +119,39 @@ async def test_register_and_discover(client):
 
 
 @pytest.mark.anyio
+async def test_federated_discover(client):
+    """Federated discover returns agents with instance field."""
+    resp = await client.get("/federation/discover")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+@pytest.mark.anyio
+async def test_federation_peers_crud(client):
+    """Add, list, remove federation peers."""
+    # Add peer
+    resp = await client.post("/federation/peers?url=https://example.fly.dev&name=Test")
+    assert resp.status_code == 200
+    assert resp.json()["ok"]
+
+    # List peers
+    resp = await client.get("/federation/peers")
+    assert resp.status_code == 200
+    peers = resp.json()
+    assert len(peers) >= 1
+    assert peers[0]["url"] == "https://example.fly.dev"
+
+    # Duplicate add
+    resp = await client.post("/federation/peers?url=https://example.fly.dev")
+    assert not resp.json()["ok"]
+
+    # Remove
+    resp = await client.request("DELETE", "/federation/peers?url=https://example.fly.dev")
+    assert resp.status_code == 200
+    assert resp.json()["ok"]
+
+
+@pytest.mark.anyio
 async def test_delete_wrong_token(client):
     """Can't delete with wrong token."""
     # Register first
