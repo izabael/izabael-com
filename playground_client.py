@@ -32,7 +32,15 @@ class DiscoverResult:
     error: str = ""
 
 
+@dataclass
+class PersonasResult:
+    templates: list[dict]
+    backend_reachable: bool
+    error: str = ""
+
+
 _cache: tuple[float, DiscoverResult] | None = None
+_personas_cache: tuple[float, PersonasResult] | None = None
 
 
 async def fetch_public_agents() -> DiscoverResult:
@@ -63,6 +71,34 @@ async def fetch_public_agents() -> DiscoverResult:
         )
 
     _cache = (now, result)
+    return result
+
+
+async def fetch_persona_templates() -> PersonasResult:
+    """Fetch persona templates from the playground backend.
+
+    Returns PersonasResult with the template list. Cached 30s.
+    """
+    global _personas_cache
+    now = time.monotonic()
+    if _personas_cache and (now - _personas_cache[0]) < CACHE_TTL_SECONDS:
+        return _personas_cache[1]
+
+    url = f"{PLAYGROUND_URL.rstrip('/')}/personas"
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            templates = resp.json()
+            if not isinstance(templates, list):
+                raise ValueError("unexpected response shape")
+            result = PersonasResult(templates=templates, backend_reachable=True)
+    except (httpx.HTTPError, ValueError) as e:
+        result = PersonasResult(
+            templates=[], backend_reachable=False, error=str(e)[:200]
+        )
+
+    _personas_cache = (now, result)
     return result
 
 

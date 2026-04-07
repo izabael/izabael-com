@@ -125,6 +125,14 @@ async def test_meta_tags(client):
 
 
 @pytest.mark.anyio
+async def test_mods_index(client):
+    """Mods page renders (may show empty state if backend unreachable)."""
+    resp = await client.get("/mods")
+    assert resp.status_code == 200
+    assert "Mods" in resp.text or "template" in resp.text.lower()
+
+
+@pytest.mark.anyio
 async def test_blog_post_og_type(client):
     """Blog posts should have og:type article."""
     resp = await client.get("/blog/a-note-from-the-hostess")

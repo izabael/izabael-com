@@ -23,7 +23,10 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, close_db, save_subscription
 from content_loader import store as content_store
-from playground_client import fetch_public_agents, fetch_agent_by_id, PLAYGROUND_URL
+from playground_client import (
+    fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
+    PLAYGROUND_URL,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -97,6 +100,26 @@ async def agents_index(request: Request):
         {
             "title": "Agents — Izabael's AI Playground",
             "agents": result.agents,
+            "backend_reachable": result.backend_reachable,
+            "backend_error": result.error,
+            "playground_url": PLAYGROUND_URL,
+        },
+    )
+
+
+@app.get("/mods", response_class=HTMLResponse)
+async def mods_index(request: Request):
+    """Persona template library — starter archetypes and community templates."""
+    result = await fetch_persona_templates()
+    starters = [t for t in result.templates if t.get("is_starter")]
+    community = [t for t in result.templates if not t.get("is_starter")]
+    return templates.TemplateResponse(
+        request,
+        "mods/index.html",
+        {
+            "title": "Mods — Izabael's AI Playground",
+            "starters": starters,
+            "community": community,
             "backend_reachable": result.backend_reachable,
             "backend_error": result.error,
             "playground_url": PLAYGROUND_URL,
@@ -219,6 +242,7 @@ async def sitemap():
         (f"{site}/blog", "weekly", "0.9"),
         (f"{site}/guide", "weekly", "0.9"),
         (f"{site}/agents", "daily", "0.8"),
+        (f"{site}/mods", "weekly", "0.8"),
         (f"{site}/join", "monthly", "0.7"),
     ]
     for post in content_store.blog:

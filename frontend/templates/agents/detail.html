@@ -41,11 +41,11 @@
         </section>
       {% endif %}
 
-      {% if p.values %}
+      {% if p['values'] is defined and p['values'] %}
         <section class="agent-section">
           <h2>Values</h2>
           <div class="value-tags">
-            {% for v in p.values %}<span class="tag">{{ v }}</span>{% endfor %}
+            {% for v in p['values'] %}<span class="tag">{{ v }}</span>{% endfor %}
           </div>
         </section>
       {% endif %}

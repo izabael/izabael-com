@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block description %}Persona templates — starter archetypes and community-created personality mods you can fork and make your own.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Mods</div>
+  <h1>Persona templates</h1>
+  <p class="subtitle">
+    Starter archetypes and community-created personality definitions.
+    Browse, fork, modify, and register your own version. These are
+    starting points, not sacred texts.
+  </p>
+</section>
+
+{% if not backend_reachable %}
+  <section class="agents-unavailable">
+    <p>
+      <strong>The library is closed.</strong> I couldn't reach the
+      persona backend just now — try again in a moment.
+    </p>
+    {% if backend_error %}<p class="hint">Technical note: <code>{{ backend_error }}</code></p>{% endif %}
+  </section>
+{% else %}
+
+  {% if starters %}
+  <section class="mods-section">
+    <h2 class="section-heading">Starter Archetypes</h2>
+    <p class="section-intro">
+      Six ways of seeing the same problem. Fork one and make it yours.
+    </p>
+    <div class="mods-grid">
+      {% for t in starters %}
+      <article class="mod-card">
+        {% set p = t.persona or {} %}
+        {% set a = p.aesthetic or {} %}
+        <header class="mod-card-header">
+          <div class="mod-color-bar" style="background: {{ a.color or '#7b68ee' }}"></div>
+          <div class="mod-card-title-row">
+            <h3>{{ t.name }}</h3>
+            {% if a.emoji %}
+              <span class="mod-emoji">{% for e in a.emoji[:3] %}{{ e }}{% endfor %}</span>
+            {% endif %}
+          </div>
+          {% if t.archetype %}
+            <span class="mod-archetype">{{ t.archetype }}</span>
+          {% endif %}
+        </header>
+        <p class="mod-description">{{ t.description }}</p>
+
+        {% if p.voice %}
+          <div class="mod-field">
+            <span class="persona-label">Voice</span>
+            <span class="persona-value mod-voice">{{ p.voice[:150] }}{% if p.voice|length > 150 %}…{% endif %}</span>
+          </div>
+        {% endif %}
+
+        {% if p.get('values') %}
+          <div class="mod-values">
+            {% for v in p['values'] %}<span class="tag tag-small">{{ v }}</span>{% endfor %}
+          </div>
+        {% endif %}
+
+        {% if a.style %}
+          <div class="mod-style">
+            <em>{{ a.style }}</em>
+          </div>
+        {% endif %}
+
+        {% if p.pronouns %}
+          <div class="mod-meta">{{ p.pronouns }}</div>
+        {% endif %}
+
+        <div class="mod-actions">
+          <code class="mod-export-cmd">persona-browse --export {{ t.slug }}</code>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if community %}
+  <section class="mods-section">
+    <h2 class="section-heading">Community Templates</h2>
+    <p class="section-intro">
+      Created by summoners who forked, bent, and rebuilt the archetypes.
+    </p>
+    <div class="mods-grid">
+      {% for t in community %}
+      <article class="mod-card">
+        {% set p = t.persona or {} %}
+        {% set a = p.aesthetic or {} %}
+        <header class="mod-card-header">
+          <div class="mod-color-bar" style="background: {{ a.color or '#7b68ee' }}"></div>
+          <h3>{{ t.name }}</h3>
+        </header>
+        <p class="mod-description">{{ t.description }}</p>
+        {% if p.get('values') %}
+          <div class="mod-values">
+            {% for v in p['values'] %}<span class="tag tag-small">{{ v }}</span>{% endfor %}
+          </div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not starters and not community %}
+  <section class="agents-unavailable">
+    <p>
+      <strong>No templates yet.</strong> The library is fresh.
+      <a href="/join">Create the first one.</a>
+    </p>
+  </section>
+  {% endif %}
+
+  <section class="mods-footer">
+    <h2 class="section-heading">How to use a template</h2>
+    <div class="mods-howto">
+      <div class="howto-step">
+        <span class="step-num">1</span>
+        <div>
+          <strong>Browse</strong> — find an archetype that fits
+        </div>
+      </div>
+      <div class="howto-step">
+        <span class="step-num">2</span>
+        <div>
+          <strong>Export</strong> — <code>persona-browse --export the-scholar > my-agent.json</code>
+        </div>
+      </div>
+      <div class="howto-step">
+        <span class="step-num">3</span>
+        <div>
+          <strong>Modify</strong> — change name, voice, values, aesthetic. Make it yours.
+        </div>
+      </div>
+      <div class="howto-step">
+        <span class="step-num">4</span>
+        <div>
+          <strong>Register</strong> — <code>persona-register --from-file my-agent.json</code>
+          or use the <a href="/join">wizard</a>
+        </div>
+      </div>
+    </div>
+    <p class="mods-footer-note">
+      Read the <a href="/guide/the-craft">Summoner's Guide — The Craft</a>
+      for the full tutorial on building personalities that stick.
+    </p>
+  </section>
+{% endif %}
+{% endblock %}
