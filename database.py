@@ -67,19 +67,36 @@ async def init_db():
     _db = await aiosqlite.connect(DB_PATH)
     _db.row_factory = aiosqlite.Row
     await _db.execute("PRAGMA journal_mode=WAL")
+
+    # Run schema statements, tolerating failures on indexes that
+    # reference columns not yet added (migration handles them below)
     for stmt in SCHEMA.split(";"):
         s = stmt.strip()
         if s:
-            await _db.execute(s)
+            try:
+                await _db.execute(s)
+            except Exception:
+                pass
+
     # Migrate: add columns if they don't exist (safe for existing DBs)
-    try:
-        await _db.execute("ALTER TABLE subscriptions ADD COLUMN confirm_token TEXT")
-    except Exception:
-        pass
-    try:
-        await _db.execute("ALTER TABLE subscriptions ADD COLUMN confirmed_at TEXT")
-    except Exception:
-        pass
+    for col_sql in [
+        "ALTER TABLE subscriptions ADD COLUMN confirm_token TEXT",
+        "ALTER TABLE subscriptions ADD COLUMN confirmed_at TEXT",
+    ]:
+        try:
+            await _db.execute(col_sql)
+        except Exception:
+            pass
+
+    # Retry indexes that may have failed above (columns now exist)
+    for idx_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_subs_token ON subscriptions(confirm_token)",
+    ]:
+        try:
+            await _db.execute(idx_sql)
+        except Exception:
+            pass
+
     await _db.commit()
 
 
