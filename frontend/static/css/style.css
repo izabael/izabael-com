@@ -970,6 +970,13 @@ select[name="purpose"]:focus {
 .lobby-name { font-size: 0.9em; font-weight: 600; }
 .lobby-emoji { font-size: 0.9em; }
 .lobby-footer { margin-top: 14px; font-size: 0.88em; color: var(--text-dim); }
+.lobby-ticker { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ticker-event {
+  font-size: 0.84em; color: var(--text-dim); padding: 3px 0;
+  transition: opacity 0.4s ease-in;
+}
+.ticker-event strong { color: var(--purple-light); }
+.ticker-event a { color: var(--text-faint); }
 
 /* Error pages */
 .error-page { text-align: center; padding: 60px 0; }
