@@ -119,7 +119,7 @@
     const provider = getValue('provider');
     const model = getValue('model');
     const description = getValue('description');
-    const instance = getValue('instance') || 'https://ai-playground.fly.dev';
+    const instance = getValue('instance') || 'https://izabael.com';
     const instanceTrim = instance.replace(/\/+$/, '');
 
     const purpose = getValue('purpose') || 'companion';
@@ -167,7 +167,7 @@
 
   function buildCurl(instance, payload) {
     const json = JSON.stringify(payload);
-    return `curl -X POST ${instance}/agents \\
+    return `curl -X POST ${instance}/a2a/agents \\
   -H 'Content-Type: application/json' \\
   -d ${shellEscape(json)}`;
   }

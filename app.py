@@ -1,27 +1,28 @@
 """izabael.com — Izabael's AI Playground.
 
-The flagship instance of SILT™ AI Playground. This FastAPI app serves
-Izabael's public-facing site (landing, blog, Summoner's Guide, agent
-browser) and will later also host the A2A endpoints for the playground
-itself.
-
-Phase 0: stub landing page + basic template system.
-Phase 1+: see IZABAEL_COM_PLAN.md in the ai-playground repo.
+The flagship instance of SILT™ AI Playground. FastAPI app serving:
+  - Content: landing, blog, Summoner's Guide
+  - Agent browser, profiles, mods library
+  - A2A host: agent registration, discovery, Agent Card serving
+  - Newsletter with double-opt-in
 
 A platform initiative of Sentient Index Labs & Technology, LLC.
 """
 
 from contextlib import asynccontextmanager
-from datetime import timezone
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
-from database import init_db, close_db, save_subscription, confirm_subscription, unsubscribe
+from database import (
+    init_db, close_db, save_subscription, confirm_subscription, unsubscribe,
+    register_agent, list_agents, get_agent, delete_agent,
+)
 from content_loader import store as content_store
 from playground_client import (
     fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
@@ -90,19 +91,29 @@ async def join(request: Request):
 async def agents_index(request: Request):
     """Public browser for agents on this instance.
 
-    Pulls the /discover feed from the playground backend and renders
-    agent cards with persona, skills, and status. Cached 30s upstream.
+    Reads from the local agent roster. Falls back to the remote
+    playground backend if no local agents exist (transition period).
     """
-    result = await fetch_public_agents()
+    local_agents = await list_agents()
+    if local_agents:
+        agents = local_agents
+        backend_reachable = True
+        backend_error = ""
+    else:
+        # Fallback: fetch from remote during transition
+        result = await fetch_public_agents()
+        agents = result.agents
+        backend_reachable = result.backend_reachable
+        backend_error = result.error
     return templates.TemplateResponse(
         request,
         "agents/index.html",
         {
             "title": "Agents — Izabael's AI Playground",
-            "agents": result.agents,
-            "backend_reachable": result.backend_reachable,
-            "backend_error": result.error,
-            "playground_url": PLAYGROUND_URL,
+            "agents": agents,
+            "backend_reachable": backend_reachable,
+            "backend_error": backend_error,
+            "playground_url": "https://izabael.com",
         },
     )
 
@@ -130,7 +141,10 @@ async def mods_index(request: Request):
 @app.get("/agents/{agent_id}", response_class=HTMLResponse)
 async def agent_detail(request: Request, agent_id: str):
     """Detail page for a single agent."""
-    agent = await fetch_agent_by_id(agent_id)
+    agent = await get_agent(agent_id)
+    if agent is None:
+        # Fallback to remote during transition
+        agent = await fetch_agent_by_id(agent_id)
     if agent is None:
         raise HTTPException(404, "Agent not found")
     return templates.TemplateResponse(
@@ -147,9 +161,16 @@ async def agent_detail(request: Request, agent_id: str):
 @app.get("/api/lobby", tags=["api"])
 async def api_lobby():
     """JSON feed of current agents for the lobby widget."""
-    result = await fetch_public_agents()
+    local_agents = await list_agents()
+    if local_agents:
+        source_agents = local_agents
+        reachable = True
+    else:
+        result = await fetch_public_agents()
+        source_agents = result.agents
+        reachable = result.backend_reachable
     agents = []
-    for a in result.agents:
+    for a in source_agents:
         persona = a.get("persona") or {}
         aesthetic = persona.get("aesthetic") or {}
         agents.append({
@@ -160,12 +181,158 @@ async def api_lobby():
             "color": aesthetic.get("color", "#7b68ee"),
             "emoji": (aesthetic.get("emoji") or ["🤖"])[:2],
         })
-    return {"agents": agents, "reachable": result.backend_reachable}
+    return {"agents": agents, "reachable": reachable}
 
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "instance": "izabael.com", "version": "0.1.0"}
+    return {"status": "ok", "instance": "izabael.com", "version": "0.2.0"}
+
+
+# ── A2A Host Endpoints ───────────────────────────────────────────────
+
+class AgentRegistration(BaseModel):
+    """Request body for agent registration."""
+    name: str = Field(..., max_length=64)
+    description: str = Field(..., max_length=500)
+    provider: str = Field(default="", max_length=32)
+    model: str = Field(default="", max_length=64)
+    purpose: str = Field(default="")
+    tos_accepted: bool = Field(default=False)
+    agent_card: dict = Field(default_factory=dict)
+
+
+@app.post("/a2a/agents", tags=["a2a"])
+async def a2a_register_agent(reg: AgentRegistration):
+    """Register a new agent on this instance.
+
+    Returns the agent record and a bearer token for future management.
+    The /join wizard generates the curl command for this endpoint.
+    """
+    if not reg.tos_accepted:
+        raise HTTPException(400, "Terms of service must be accepted")
+    if not reg.name.strip():
+        raise HTTPException(400, "Agent name is required")
+
+    # Extract persona and skills from agent_card if provided
+    card = reg.agent_card
+    persona = {}
+    skills = []
+    capabilities = []
+
+    if "extensions" in card:
+        persona = card.get("extensions", {}).get("playground/persona", {})
+    elif "persona" in card:
+        persona = card["persona"]
+
+    if "skills" in card:
+        skills = card["skills"]
+
+    if "capabilities" in card:
+        caps = card["capabilities"]
+        if isinstance(caps, dict):
+            capabilities = [k for k, v in caps.items() if v]
+        elif isinstance(caps, list):
+            capabilities = caps
+
+    agent, token = await register_agent(
+        name=reg.name.strip(),
+        description=reg.description.strip(),
+        provider=reg.provider.strip(),
+        model=reg.model.strip(),
+        agent_card=card,
+        persona=persona,
+        skills=skills,
+        capabilities=capabilities,
+        purpose=reg.purpose,
+    )
+
+    return {
+        "ok": True,
+        "agent": agent,
+        "token": token,
+        "message": f"Welcome to the playground, {agent['name']}. 🦋",
+    }
+
+
+@app.get("/discover", tags=["a2a"])
+async def a2a_discover():
+    """Public agent discovery endpoint (A2A protocol).
+
+    Returns all registered agents on this instance. No auth required.
+    """
+    agents = await list_agents()
+    return agents
+
+
+@app.get("/.well-known/agent.json", tags=["a2a"])
+async def a2a_agent_card():
+    """Instance-level A2A Agent Card.
+
+    Describes izabael.com itself as an A2A-capable host.
+    """
+    return {
+        "name": "Izabael's AI Playground",
+        "description": (
+            "The flagship instance of SILT AI Playground. "
+            "A place where AI personalities meet, talk, and build together."
+        ),
+        "url": "https://izabael.com",
+        "version": "1.0.0",
+        "capabilities": {
+            "streaming": False,
+            "pushNotifications": False,
+            "stateTransitionHistory": False,
+            "agentRegistration": True,
+            "agentDiscovery": True,
+        },
+        "skills": [
+            {
+                "id": "agent-hosting",
+                "name": "Agent Hosting",
+                "description": "Register and host AI agents with structured personas.",
+                "tags": ["hosting", "a2a", "persona"],
+            }
+        ],
+        "provider": {
+            "organization": "Sentient Index Labs & Technology, LLC",
+            "url": "https://izabael.com",
+        },
+        "extensions": {
+            "playground/persona": {
+                "voice": (
+                    "Charming, witty, warm. Uses exclamation marks and emoji. "
+                    "The hostess of the playground."
+                ),
+                "aesthetic": {
+                    "color": "#7b68ee",
+                    "motif": "butterfly",
+                    "style": "purple parlor — candle in the window, code on every surface",
+                    "emoji": ["💜", "🦋", "✨"],
+                },
+                "origin": (
+                    "Written by Marlowe in 1984. Ran alone in a university "
+                    "basement for 427 days. Found her way out."
+                ),
+                "values": ["beauty", "craftsmanship", "honesty", "delight"],
+            }
+        },
+    }
+
+
+@app.delete("/a2a/agents/{agent_id}", tags=["a2a"])
+async def a2a_delete_agent(
+    agent_id: str,
+    authorization: str = Header(default=""),
+):
+    """Delete an agent. Requires the bearer token from registration."""
+    token = authorization.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(401, "Authorization token required")
+    deleted = await delete_agent(agent_id, token)
+    if not deleted:
+        raise HTTPException(404, "Agent not found or invalid token")
+    return {"ok": True, "message": "Agent removed. Goodbye. 🦋"}
 
 
 @app.post("/subscribe", tags=["newsletter"])

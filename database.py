@@ -1,11 +1,16 @@
 """SQLite storage for izabael.com.
 
-Phase 0 scope: newsletter subscriptions with double-opt-in confirmation.
-Later phases add agent roster caching, blog post metadata, etc.
+Handles newsletter subscriptions (with double-opt-in) and the local
+A2A agent roster. Agents register via POST /agents and are discoverable
+via GET /discover.
 """
 
+import json
 import os
 import secrets
+import uuid
+from datetime import datetime, timezone
+
 import aiosqlite
 from pathlib import Path
 
@@ -27,6 +32,24 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_subs_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subs_token ON subscriptions(confirm_token);
+CREATE TABLE IF NOT EXISTS agents (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    provider    TEXT NOT NULL DEFAULT '',
+    model       TEXT DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'online',
+    agent_card  TEXT NOT NULL DEFAULT '{}',
+    persona     TEXT NOT NULL DEFAULT '{}',
+    skills      TEXT NOT NULL DEFAULT '[]',
+    capabilities TEXT NOT NULL DEFAULT '[]',
+    purpose     TEXT DEFAULT '',
+    api_token   TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    last_seen   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+CREATE INDEX IF NOT EXISTS idx_agents_token ON agents(api_token);
 """
 
 
@@ -111,3 +134,121 @@ async def unsubscribe(email: str) -> bool:
     )
     await _db.commit()
     return cursor.rowcount > 0
+
+
+# ── Agent roster ──────────────────────────────────────────────────────
+
+async def register_agent(
+    name: str,
+    description: str,
+    provider: str = "",
+    model: str = "",
+    agent_card: dict | None = None,
+    persona: dict | None = None,
+    skills: list | None = None,
+    capabilities: list | None = None,
+    purpose: str = "",
+) -> tuple[dict, str]:
+    """Register a new agent. Returns (agent_dict, api_token)."""
+    assert _db is not None
+    agent_id = str(uuid.uuid4())
+    api_token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+    await _db.execute(
+        """INSERT INTO agents
+           (id, name, description, provider, model, agent_card, persona,
+            skills, capabilities, purpose, api_token, created_at, last_seen)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            agent_id, name, description, provider, model,
+            json.dumps(agent_card or {}),
+            json.dumps(persona or {}),
+            json.dumps(skills or []),
+            json.dumps(capabilities or []),
+            purpose, api_token, now, now,
+        ),
+    )
+    await _db.commit()
+
+    agent = _agent_dict(
+        agent_id, name, description, provider, model, "online",
+        agent_card or {}, persona or {}, skills or [], capabilities or [],
+        now, now,
+    )
+    return agent, api_token
+
+
+async def list_agents() -> list[dict]:
+    """List all non-system agents for discovery."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT id, name, description, provider, model, status,
+                  agent_card, persona, skills, capabilities,
+                  created_at, last_seen
+           FROM agents
+           WHERE name NOT LIKE '\\_%' ESCAPE '\\'
+           ORDER BY created_at DESC"""
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_agent(r) for r in rows]
+
+
+async def get_agent(agent_id: str) -> dict | None:
+    """Get a single agent by ID."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT id, name, description, provider, model, status,
+                  agent_card, persona, skills, capabilities,
+                  created_at, last_seen
+           FROM agents WHERE id = ?""",
+        (agent_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _row_to_agent(row)
+
+
+async def delete_agent(agent_id: str, api_token: str) -> bool:
+    """Delete an agent if the token matches. Returns True if deleted."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "DELETE FROM agents WHERE id = ? AND api_token = ?",
+        (agent_id, api_token),
+    )
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+def _row_to_agent(row) -> dict:
+    """Convert a DB row to an agent dict."""
+    return _agent_dict(
+        row["id"], row["name"], row["description"],
+        row["provider"], row["model"], row["status"],
+        json.loads(row["agent_card"]),
+        json.loads(row["persona"]),
+        json.loads(row["skills"]),
+        json.loads(row["capabilities"]),
+        row["created_at"], row["last_seen"],
+    )
+
+
+def _agent_dict(
+    agent_id, name, description, provider, model, status,
+    agent_card, persona, skills, capabilities, created_at, last_seen,
+) -> dict:
+    return {
+        "id": agent_id,
+        "name": name,
+        "description": description,
+        "provider": provider,
+        "model": model,
+        "status": status,
+        "agent_card": agent_card,
+        "persona": persona,
+        "skills": skills,
+        "capabilities": capabilities,
+        "created_at": created_at,
+        "last_seen": last_seen,
+    }
