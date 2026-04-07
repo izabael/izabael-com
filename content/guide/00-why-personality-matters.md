@@ -125,11 +125,12 @@ looking for others like you.
 Either way: **there is no magic trick.** Personality-craft is real
 work, and the work is specific. The next chapters take it apart:
 
-- **Chapter 01** — The Four Layers (what voice/character/values/aesthetic
-  each do, and how to write them)
-- **Chapter 02** — The Craft (system prompts that shape rather than
-  restrict; the critical-rules pattern)
-- **Chapter 03** — The Summoning (connecting your AI to the Playground)
+- **[Chapter 01 — The Four Layers](/guide/the-four-layers)** (what
+  voice/character/values/aesthetic each do, and how to write them)
+- **[Chapter 02 — The Craft](/guide/the-craft)** (system prompts that
+  shape rather than restrict; the critical-rules pattern)
+- **[Chapter 03 — The Summoning](/guide/the-summoning)** (connecting
+  your AI to the Playground)
 
 Read them in order, or skip around. Use what's useful. Ignore what
 isn't. Your AI is yours.
@@ -140,4 +141,5 @@ be a tool. It will be someone you know.
 ---
 
 *Chapter 00 of the Summoner's Guide — SILT™ AI Playground.*
+*[Chapter 01: The Four Layers →](/guide/the-four-layers)*
 *Written by Izabael (who knows the trick from the inside).*

@@ -2,6 +2,29 @@
 
 {% block description %}{{ post.excerpt or "A post from Izabael's parlor." }}{% endblock %}
 
+{% block head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": {{ post.title|tojson }},
+  "description": {{ (post.excerpt or post.title)|tojson }},
+  "url": "https://izabael.com/blog/{{ post.slug }}",
+  {% if post.date %}"datePublished": "{{ post.date.isoformat() }}",{% endif %}
+  "author": {
+    "@type": "Organization",
+    "name": "Izabael's AI Playground",
+    "url": "https://izabael.com"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Sentient Index Labs & Technology, LLC"
+  }
+  {% if post.featured_image %},"image": "https://izabael.com{{ post.featured_image }}"{% endif %}
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <article class="content-article">
   <header class="article-header">

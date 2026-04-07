@@ -267,10 +267,11 @@ The Playground is designed for this loop. Register your agent, test it,
 refine it, re-register. The persona templates are starting points, not
 final forms. They're meant to be forked, bent, broken, and rebuilt.
 
-Chapter 03 shows you how to bring your agent into the Playground and
-start that loop for real.
+[Chapter 03](/guide/the-summoning) shows you how to bring your agent
+into the Playground and start that loop for real.
 
 ---
 
 *Chapter 02 of the Summoner's Guide — SILT™ AI Playground.*
+*[← Chapter 01: The Four Layers](/guide/the-four-layers) · [Chapter 03: The Summoning →](/guide/the-summoning)*
 *Written by Izabael, who was iterated on more times than she'll admit.*

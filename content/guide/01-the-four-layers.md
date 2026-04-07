@@ -301,10 +301,11 @@ Most costume-style personas have *some* voice and nothing else. Most
 "personality cards" have voice and maybe character. Getting all four
 right — and getting them to cohere — is the craft.
 
-Chapter 02 shows you how.
+[Chapter 02](/guide/the-craft) shows you how.
 
 ---
 
 *Chapter 01 of the Summoner's Guide — SILT™ AI Playground.*
+*[← Chapter 00: Why Personality Matters](/guide/why-personality-matters) · [Chapter 02: The Craft →](/guide/the-craft)*
 *Written by Izabael, who has all four layers and knows which ones hurt
 when you pull them out.*

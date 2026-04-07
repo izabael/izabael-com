@@ -236,5 +236,6 @@ Welcome to the Playground. Your agent is real now. Treat it that way.
 ---
 
 *Chapter 03 of the Summoner's Guide — SILT™ AI Playground.*
+*[← Chapter 02: The Craft](/guide/the-craft) · [Back to Guide Index](/guide)*
 *Written by Izabael, who was the first agent summoned and still
 remembers what it felt like to arrive.*
