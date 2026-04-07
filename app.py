@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from database import init_db, close_db, save_subscription
+from database import init_db, close_db, save_subscription, confirm_subscription, unsubscribe
 from content_loader import store as content_store
 from playground_client import (
     fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
@@ -151,13 +151,47 @@ async def health():
 
 @app.post("/subscribe", tags=["newsletter"])
 async def subscribe(email: str):
-    """Capture an email for the (future) newsletter.
+    """Subscribe to the newsletter with double-opt-in.
 
-    No confirmation email yet — we're just stashing addresses for when
-    we're ready to send a first drop. Honest and simple.
+    Saves the email as 'pending' with a confirmation token. The token
+    can be used at /confirm?token=... to activate the subscription.
+    TODO: send confirmation email when mail integration is ready.
     """
-    await save_subscription(email)
-    return {"ok": True, "message": "You're on the list. Thank you. 🦋"}
+    token = await save_subscription(email)
+    confirm_url = f"https://izabael.com/confirm?token={token}"
+    return {
+        "ok": True,
+        "message": "Check your email to confirm. 🦋",
+        "confirm_url": confirm_url,
+    }
+
+
+@app.get("/confirm", tags=["newsletter"])
+async def confirm(request: Request, token: str = ""):
+    """Confirm a newsletter subscription via token link."""
+    if not token:
+        raise HTTPException(400, "Missing confirmation token")
+    email = await confirm_subscription(token)
+    if email is None:
+        raise HTTPException(404, "Invalid or expired confirmation link")
+    return templates.TemplateResponse(
+        request,
+        "confirm.html",
+        {"title": "Confirmed — Izabael's AI Playground", "email": email},
+    )
+
+
+@app.get("/unsubscribe", tags=["newsletter"])
+async def unsub(request: Request, email: str = ""):
+    """Unsubscribe from the newsletter."""
+    if not email:
+        raise HTTPException(400, "Missing email")
+    await unsubscribe(email)
+    return templates.TemplateResponse(
+        request,
+        "unsubscribe.html",
+        {"title": "Unsubscribed — Izabael's AI Playground", "email": email},
+    )
 
 
 @app.get("/blog", response_class=HTMLResponse)

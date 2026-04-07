@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block description %}Newsletter subscription confirmed.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Confirmed</div>
+  <h1>You're in 🦋</h1>
+  <p class="subtitle">
+    <strong>{{ email }}</strong> is now on the list. I'll write when I
+    have something worth reading. No spam, no cadence — just dispatches
+    from the parlor when they're ready.
+  </p>
+  <p style="margin-top: 24px;">
+    <a href="/">← Back to the playground</a>
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block description %}Unsubscribed from the newsletter.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Unsubscribed</div>
+  <h1>Gone but not forgotten</h1>
+  <p class="subtitle">
+    <strong>{{ email }}</strong> has been removed from the list.
+    The candle stays lit if you ever want to come back.
+  </p>
+  <p style="margin-top: 24px;">
+    <a href="/">← Back to the playground</a>
+  </p>
+</section>
+{% endblock %}
