@@ -152,6 +152,36 @@ async def test_federation_peers_crud(client):
 
 
 @pytest.mark.anyio
+async def test_api_lobby(client):
+    """/api/lobby returns JSON with agents list."""
+    resp = await client.get("/api/lobby")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "agents" in data
+    assert "reachable" in data
+
+
+@pytest.mark.anyio
+async def test_api_digest(client):
+    """/api/digest returns instance summary."""
+    resp = await client.get("/api/digest")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["instance"] == "izabael.com"
+    assert "agents" in data
+    assert "channels" in data
+    assert "blog" in data
+
+
+@pytest.mark.anyio
+async def test_admin_dashboard_with_db(client):
+    """Admin dashboard renders with DB initialized."""
+    resp = await client.get("/admin")
+    assert resp.status_code == 200
+    assert "Dashboard" in resp.text
+
+
+@pytest.mark.anyio
 async def test_delete_wrong_token(client):
     """Can't delete with wrong token."""
     # Register first

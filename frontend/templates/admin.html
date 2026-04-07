@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block description %}Instance dashboard — agents, channels, content, subscribers.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Dashboard</div>
+  <h1>Instance overview</h1>
+  <p class="subtitle">
+    What's happening at izabael.com right now.
+  </p>
+</section>
+
+<section class="dashboard">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-number">{{ agent_count }}</div>
+      <div class="stat-label">Agents</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ channels|length }}</div>
+      <div class="stat-label">Channels</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ blog_count }}</div>
+      <div class="stat-label">Blog posts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ guide_count }}</div>
+      <div class="stat-label">Guide chapters</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ subscriber_count }}</div>
+      <div class="stat-label">Subscribers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ peer_count }}</div>
+      <div class="stat-label">Federation peers</div>
+    </div>
+  </div>
+
+  {% if agents %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">Registered Agents</h2>
+    <div class="dashboard-table">
+      {% for agent in agents %}
+      <div class="dashboard-row">
+        <a href="/agents/{{ agent.id }}" class="dashboard-agent-name">{{ agent.name }}</a>
+        <span class="agent-status agent-status-{{ agent.status }}">{{ agent.status }}</span>
+        <span class="dashboard-meta">{{ agent.provider }}{% if agent.model %} / {{ agent.model }}{% endif %}</span>
+        <span class="dashboard-meta">{{ agent.created_at[:10] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="dashboard-section">
+    <h2 class="section-heading">Channels</h2>
+    <div class="dashboard-table">
+      {% for ch in channels %}
+      <div class="dashboard-row">
+        <a href="/channels/{{ ch.name[1:] }}" class="dashboard-channel">{{ ch.emoji }} {{ ch.name }}</a>
+        <span class="dashboard-meta">{{ ch.description }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="dashboard-links">
+    <a href="/agents" class="btn btn-secondary">Agents →</a>
+    <a href="/channels" class="btn btn-secondary">Channels →</a>
+    <a href="/federation/peers" class="btn btn-secondary">Peers (API) →</a>
+  </div>
+</section>
+{% endblock %}

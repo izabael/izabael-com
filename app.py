@@ -337,6 +337,72 @@ async def api_lobby():
     return {"agents": agents, "reachable": reachable}
 
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    """Simple public dashboard showing instance stats."""
+    agents = await list_agents()
+    from database import _db
+    sub_count = 0
+    peer_count = 0
+    if _db:
+        cursor = await _db.execute(
+            "SELECT COUNT(*) as n FROM subscriptions WHERE status = 'confirmed'"
+        )
+        row = await cursor.fetchone()
+        sub_count = row["n"] if row else 0
+
+        cursor = await _db.execute(
+            "SELECT COUNT(*) as n FROM federation_peers WHERE status = 'active'"
+        )
+        row = await cursor.fetchone()
+        peer_count = row["n"] if row else 0
+
+    return templates.TemplateResponse(
+        request,
+        "admin.html",
+        {
+            "title": "Dashboard — Izabael's AI Playground",
+            "agent_count": len(agents),
+            "agents": agents[:10],
+            "subscriber_count": sub_count,
+            "peer_count": peer_count,
+            "blog_count": len(content_store.blog),
+            "guide_count": len(content_store.guide),
+            "channels": CHANNELS,
+        },
+    )
+
+
+@app.get("/api/digest", tags=["api"])
+async def api_digest():
+    """Weekly digest — summary of instance activity for newsletters.
+
+    Returns counts and highlights. Will be enriched when Phase 2C
+    logging lands (conversation threads, relationship data, etc).
+    """
+    agents = await list_agents()
+    peers = await list_peers()
+    posts = content_store.blog[:5]
+
+    return {
+        "instance": "izabael.com",
+        "agents": {
+            "total": len(agents),
+            "recent": [
+                {"name": a["name"], "description": a["description"][:100]}
+                for a in agents[:5]
+            ],
+        },
+        "channels": [{"name": c["name"], "description": c["description"]} for c in CHANNELS],
+        "blog": [
+            {"title": p.title, "slug": p.slug, "date": str(p.date) if p.date else None}
+            for p in posts
+        ],
+        "guide_chapters": len(content_store.guide),
+        "federation_peers": len(peers),
+    }
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "instance": "izabael.com", "version": "0.2.0"}

@@ -24,11 +24,21 @@
   </p>
   <div class="rpg-grid">
     {% for cls in rpg_classes %}
-    <div class="rpg-card" style="border-top: 3px solid {{ cls.color or cls.get('persona', {}).get('aesthetic', {}).get('color', '#7b68ee') }}">
-      <span class="rpg-emoji">{{ cls.emoji or cls.get('persona', {}).get('aesthetic', {}).get('emoji', ['🎭'])[0] }}</span>
+    {% set p = cls.get('persona', {}) if cls.get('persona') else {} %}
+    {% set a = p.get('aesthetic', {}) if p.get('aesthetic') else {} %}
+    {% set color = cls.get('color') or a.get('color', '#7b68ee') %}
+    {% set emoji = cls.get('emoji') or (a.get('emoji', ['🎭'])[0] if a.get('emoji') else '🎭') %}
+    {% set good_for = cls.get('good_for', '') %}
+    {% if not good_for and p.get('interests') %}
+      {% set good_for = p['interests'][:3]|join(', ') %}
+    {% endif %}
+    <div class="rpg-card" style="border-top: 3px solid {{ color }}">
+      <span class="rpg-emoji">{{ emoji }}</span>
       <div class="rpg-name">{{ cls.name }}</div>
       <div class="rpg-desc">{{ cls.description }}</div>
-      <div class="rpg-good-for">Good for: {{ cls.good_for if cls.good_for is defined else cls.description[:60] }}</div>
+      {% if good_for %}
+        <div class="rpg-good-for">Good for: {{ good_for }}</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

@@ -1041,6 +1041,27 @@ select[name="purpose"]:focus {
 .byo-examples summary { cursor: pointer; color: var(--text-dim); font-size: 0.9em; padding: 6px 0; }
 .byo-examples summary:hover { color: var(--text); }
 
+/* Dashboard */
+.dashboard { margin-top: 20px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; margin-bottom: 30px; }
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px; text-align: center;
+}
+.stat-number { font-family: var(--serif); font-size: 2em; color: var(--purple-light); font-weight: 700; }
+.stat-label { font-size: 0.82em; color: var(--text-dim); margin-top: 4px; }
+.dashboard-section { margin: 24px 0; }
+.dashboard-table { display: flex; flex-direction: column; gap: 6px; }
+.dashboard-row {
+  display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.88em; flex-wrap: wrap;
+}
+.dashboard-agent-name { font-weight: 600; min-width: 120px; }
+.dashboard-channel { min-width: 160px; }
+.dashboard-meta { color: var(--text-faint); font-size: 0.85em; }
+.dashboard-links { display: flex; gap: 12px; margin-top: 24px; }
+
 /* Error pages */
 .error-page { text-align: center; padding: 60px 0; }
 .error-page h1 { font-size: 4em; color: var(--purple); margin-bottom: 0; }

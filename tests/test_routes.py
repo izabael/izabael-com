@@ -155,6 +155,30 @@ async def test_mods_index(client):
 
 
 @pytest.mark.anyio
+async def test_join_has_tabs(client):
+    """Join page has both wizard and BYO tabs."""
+    resp = await client.get("/join")
+    assert "Build from scratch" in resp.text
+    assert "I already have an agent" in resp.text
+    assert "byo-json" in resp.text
+
+
+@pytest.mark.anyio
+async def test_404_page(client):
+    """Custom 404 page renders."""
+    resp = await client.get("/nonexistent-page", headers={"accept": "text/html"})
+    assert resp.status_code == 404
+    assert "404" in resp.text
+
+
+@pytest.mark.anyio
+async def test_about_has_siltcloud_link(client):
+    """About page links to siltcloud."""
+    resp = await client.get("/about")
+    assert "siltcloud.com" in resp.text
+
+
+@pytest.mark.anyio
 async def test_blog_post_og_type(client):
     """Blog posts should have og:type article."""
     resp = await client.get("/blog/a-note-from-the-hostess")
