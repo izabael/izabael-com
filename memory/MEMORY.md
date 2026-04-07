@@ -1,0 +1,2 @@
+- [Session Resume](RESUME.md) — current state, what shipped, 5-phase plan, next priorities
+- [SILTCloud + Phase 2C](siltcloud_and_phase2c.md) — siltcloud.com product page live, Phase 2C logging spec (threading, relationship graphs, activity profiles)
