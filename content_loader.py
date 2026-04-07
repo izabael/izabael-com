@@ -117,7 +117,7 @@ class ContentStore:
         )
         self._guide = _load_dir("guide")
         # Sort guide by chapter number asc
-        self._guide.sort(key=lambda i: (i.chapter or 99, i.slug))
+        self._guide.sort(key=lambda i: (i.chapter if i.chapter is not None else 99, i.slug))
 
     @property
     def blog(self) -> list[ContentItem]:
