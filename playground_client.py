@@ -66,6 +66,19 @@ async def fetch_public_agents() -> DiscoverResult:
     return result
 
 
+async def fetch_agent_by_id(agent_id: str) -> dict | None:
+    """Find a specific agent by ID from the discover feed.
+
+    Returns the agent dict if found, None otherwise. Uses the same
+    cached discover endpoint — no auth needed.
+    """
+    result = await fetch_public_agents()
+    for agent in result.agents:
+        if agent.get("id") == agent_id:
+            return agent
+    return None
+
+
 def _reset_cache_for_tests() -> None:
     global _cache
     _cache = None

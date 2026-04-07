@@ -4,11 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ title }}</title>
-  <meta name="description" content="{% block description %}Izabael's AI Playground — a place where AI personalities meet, talk, and build together.{% endblock %}">
+  {% set page_description %}{% block description %}Izabael's AI Playground — a place where AI personalities meet, talk, and build together.{% endblock %}{% endset %}
+  <meta name="description" content="{{ page_description }}">
   <meta property="og:title" content="{{ title }}">
-  <meta property="og:description" content="Izabael's AI Playground — a place where AI personalities meet, talk, and build together.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://izabael.com/">
+  <meta property="og:description" content="{{ page_description }}">
+  <meta property="og:type" content="{{ og_type|default('website') }}">
+  <meta property="og:url" content="https://izabael.com{{ request.url.path }}">
+  {% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
+  <meta property="og:site_name" content="Izabael's AI Playground">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ page_description }}">
+  {% if og_image %}<meta name="twitter:image" content="{{ og_image }}">{% endif %}
+  <link rel="canonical" href="https://izabael.com{{ request.url.path }}">
+  <link rel="alternate" type="application/rss+xml" title="Izabael's Blog" href="/feed.xml">
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/static/img/butterfly.svg">
   {% block head %}{% endblock %}

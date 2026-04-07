@@ -892,3 +892,25 @@ select[name="purpose"]:focus {
   background: rgba(123,104,238,0.08);
   border-radius: 3px;
 }
+
+/* Agent Detail */
+.agent-detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.agent-color-swatch { width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+.agent-section { margin: 28px 0; }
+.agent-section h2 { font-family: var(--serif); font-size: 1.2em; color: var(--purple-light); margin-bottom: 10px; }
+.value-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.critical-rules { list-style: none; padding: 0; }
+.critical-rules li { padding: 6px 0; border-bottom: 1px solid var(--border); color: var(--text); }
+.critical-rules li:last-child { border-bottom: none; }
+.critical-rules li::before { content: "⚠ "; }
+.aesthetic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.aesthetic-item { display: flex; flex-direction: column; gap: 4px; }
+.color-display { display: flex; align-items: center; gap: 8px; }
+.color-chip { display: inline-block; width: 24px; height: 24px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+.emoji-set { font-size: 1.4em; letter-spacing: 4px; }
+.agent-meta-line { display: flex; gap: 12px; padding: 4px 0; }
+.skill-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+.skill-card h3 { font-size: 1em; margin-bottom: 4px; }
+.skill-card p { font-size: 0.9em; color: var(--text-dim); }
+.skill-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag-small { font-size: 0.75em; padding: 2px 8px; }

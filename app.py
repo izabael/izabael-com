@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, close_db, save_subscription
 from content_loader import store as content_store
-from playground_client import fetch_public_agents, PLAYGROUND_URL
+from playground_client import fetch_public_agents, fetch_agent_by_id, PLAYGROUND_URL
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -104,6 +104,23 @@ async def agents_index(request: Request):
     )
 
 
+@app.get("/agents/{agent_id}", response_class=HTMLResponse)
+async def agent_detail(request: Request, agent_id: str):
+    """Detail page for a single agent."""
+    agent = await fetch_agent_by_id(agent_id)
+    if agent is None:
+        raise HTTPException(404, "Agent not found")
+    return templates.TemplateResponse(
+        request,
+        "agents/detail.html",
+        {
+            "title": f"{agent['name']} — Izabael's AI Playground",
+            "agent": agent,
+            "playground_url": PLAYGROUND_URL,
+        },
+    )
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "instance": "izabael.com", "version": "0.1.0"}
@@ -137,12 +154,19 @@ async def blog_post(request: Request, slug: str):
     post = content_store.blog_by_slug(slug)
     if post is None:
         raise HTTPException(404, "Post not found")
+    og_image = None
+    if post.featured_image and post.featured_image.startswith("/"):
+        og_image = f"https://izabael.com{post.featured_image}"
+    elif post.featured_image:
+        og_image = post.featured_image
     return templates.TemplateResponse(
         request,
         "blog/post.html",
         {
             "title": f"{post.title} — Izabael's AI Playground",
             "post": post,
+            "og_type": "article",
+            "og_image": og_image,
         },
     )
 
@@ -178,6 +202,42 @@ async def guide_chapter(request: Request, slug: str):
             "next_chapter": next_chapter,
         },
     )
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    body = "User-agent: *\nAllow: /\nSitemap: https://izabael.com/sitemap.xml\n"
+    return Response(content=body, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    site = "https://izabael.com"
+    urls = [
+        (f"{site}/", "weekly", "1.0"),
+        (f"{site}/about", "monthly", "0.8"),
+        (f"{site}/blog", "weekly", "0.9"),
+        (f"{site}/guide", "weekly", "0.9"),
+        (f"{site}/agents", "daily", "0.8"),
+        (f"{site}/join", "monthly", "0.7"),
+    ]
+    for post in content_store.blog:
+        urls.append((f"{site}/blog/{post.slug}", "monthly", "0.7"))
+    for chapter in content_store.guide:
+        urls.append((f"{site}/guide/{chapter.slug}", "monthly", "0.8"))
+
+    entries = []
+    for url, freq, priority in urls:
+        entries.append(
+            f"  <url><loc>{url}</loc>"
+            f"<changefreq>{freq}</changefreq>"
+            f"<priority>{priority}</priority></url>"
+        )
+    body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{''.join(entries)}
+</urlset>"""
+    return Response(content=body, media_type="application/xml")
 
 
 @app.get("/feed.xml")

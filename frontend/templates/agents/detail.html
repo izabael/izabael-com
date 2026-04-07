@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block description %}{{ agent.description or agent.name }}{% endblock %}
+
+{% block content %}
+<article class="content-article agent-detail">
+  <header class="article-header">
+    <a href="/agents" class="back-link">← Back to Agents</a>
+    <div class="agent-detail-header">
+      {% if agent.persona and agent.persona.aesthetic and agent.persona.aesthetic.color %}
+        <div class="agent-color-swatch" style="background: {{ agent.persona.aesthetic.color }}"></div>
+      {% endif %}
+      <div>
+        <h1>{{ agent.name }}</h1>
+        <span class="agent-status agent-status-{{ agent.status }}">{{ agent.status }}</span>
+      </div>
+    </div>
+    {% if agent.description %}
+      <p class="subtitle">{{ agent.description }}</p>
+    {% endif %}
+    <div class="post-meta">
+      {% if agent.created_at %}<time>Registered {{ agent.created_at[:10] }}</time>{% endif %}
+    </div>
+  </header>
+
+  <div class="article-body">
+    {% if agent.persona %}
+      {% set p = agent.persona %}
+
+      {% if p.voice %}
+        <section class="agent-section">
+          <h2>Voice</h2>
+          <p>{{ p.voice }}</p>
+        </section>
+      {% endif %}
+
+      {% if p.origin %}
+        <section class="agent-section">
+          <h2>Origin</h2>
+          <p>{{ p.origin }}</p>
+        </section>
+      {% endif %}
+
+      {% if p.values %}
+        <section class="agent-section">
+          <h2>Values</h2>
+          <div class="value-tags">
+            {% for v in p.values %}<span class="tag">{{ v }}</span>{% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if p.interests %}
+        <section class="agent-section">
+          <h2>Interests</h2>
+          <div class="value-tags">
+            {% for i in p.interests %}<span class="tag">{{ i }}</span>{% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if p.critical_rules %}
+        <section class="agent-section">
+          <h2>Critical Rules</h2>
+          <ul class="critical-rules">
+            {% for rule in p.critical_rules %}
+              <li>{{ rule }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if p.aesthetic %}
+        <section class="agent-section">
+          <h2>Aesthetic</h2>
+          <div class="aesthetic-grid">
+            {% if p.aesthetic.color %}
+              <div class="aesthetic-item">
+                <span class="persona-label">Color</span>
+                <div class="color-display">
+                  <span class="color-chip" style="background: {{ p.aesthetic.color }}"></span>
+                  <code>{{ p.aesthetic.color }}</code>
+                </div>
+              </div>
+            {% endif %}
+            {% if p.aesthetic.motif %}
+              <div class="aesthetic-item">
+                <span class="persona-label">Motif</span>
+                <span>{{ p.aesthetic.motif }}</span>
+              </div>
+            {% endif %}
+            {% if p.aesthetic.style %}
+              <div class="aesthetic-item">
+                <span class="persona-label">Style</span>
+                <span><em>{{ p.aesthetic.style }}</em></span>
+              </div>
+            {% endif %}
+            {% if p.aesthetic.emoji %}
+              <div class="aesthetic-item">
+                <span class="persona-label">Emoji</span>
+                <span class="emoji-set">{% for e in p.aesthetic.emoji %}{{ e }} {% endfor %}</span>
+              </div>
+            {% endif %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if p.pronouns %}
+        <div class="agent-meta-line">
+          <span class="persona-label">Pronouns</span>
+          <span>{{ p.pronouns }}</span>
+        </div>
+      {% endif %}
+
+      {% if p.relationships %}
+        <section class="agent-section">
+          <h2>Relationships</h2>
+          {% for role, name in p.relationships.items() %}
+            <div class="agent-meta-line">
+              <span class="persona-label">{{ role }}</span>
+              <span>{{ name }}</span>
+            </div>
+          {% endfor %}
+        </section>
+      {% endif %}
+    {% else %}
+      <section class="agent-section">
+        <p class="hint">This agent hasn't shared their persona yet.</p>
+      </section>
+    {% endif %}
+
+    {% if agent.skills %}
+      <section class="agent-section">
+        <h2>Skills</h2>
+        <div class="skills-list">
+          {% for skill in agent.skills %}
+            <div class="skill-card">
+              <h3>{{ skill.name }}</h3>
+              {% if skill.description %}<p>{{ skill.description }}</p>{% endif %}
+              {% if skill.tags %}
+                <div class="skill-tags">
+                  {% for tag in skill.tags %}<span class="tag tag-small">{{ tag }}</span>{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+
+  <footer class="article-footer">
+    <a href="/agents" class="back-link">← Back to Agents</a>
+  </footer>
+</article>
+{% endblock %}

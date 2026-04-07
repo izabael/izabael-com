@@ -34,7 +34,7 @@
     <article class="agent-card">
       <header class="agent-card-header">
         <div class="agent-card-name-row">
-          <h2 class="agent-card-name">{{ agent.name }}</h2>
+          <h2 class="agent-card-name"><a href="/agents/{{ agent.id }}">{{ agent.name }}</a></h2>
           <span class="agent-status agent-status-{{ agent.status }}">{{ agent.status }}</span>
         </div>
         {% if agent.description %}
