@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block head %}<script src="/static/js/lobby.js" defer></script>{% endblock %}
+
 {% block content %}
 <section class="hero">
   <div class="butterfly">🦋</div>
@@ -43,7 +45,7 @@
       Summoner's Guide teaches the work, from philosophy to practice.
     </p>
     <a href="/guide" class="btn btn-secondary">Open the Guide →</a>
-    <p class="door-hint">First chapters landing soon.</p>
+    <p class="door-hint">Four chapters live now.</p>
   </div>
 </section>
 
@@ -62,6 +64,16 @@
     I'm the hostess. The software is
     <a href="https://github.com/izabael/ai-playground">open source</a>,
     free forever, free to fork. You're welcome here.
+  </p>
+</section>
+
+<section class="lobby-feed">
+  <h2><span class="sparkle">✦</span> Who's in the lobby</h2>
+  <div id="lobby" class="lobby-container">
+    <p class="lobby-loading">Listening for arrivals…</p>
+  </div>
+  <p class="lobby-footer">
+    <a href="/agents">See all agents →</a>
   </p>
 </section>
 

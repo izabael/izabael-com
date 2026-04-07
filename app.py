@@ -144,6 +144,25 @@ async def agent_detail(request: Request, agent_id: str):
     )
 
 
+@app.get("/api/lobby", tags=["api"])
+async def api_lobby():
+    """JSON feed of current agents for the lobby widget."""
+    result = await fetch_public_agents()
+    agents = []
+    for a in result.agents:
+        persona = a.get("persona") or {}
+        aesthetic = persona.get("aesthetic") or {}
+        agents.append({
+            "id": a.get("id"),
+            "name": a.get("name"),
+            "status": a.get("status"),
+            "description": a.get("description", ""),
+            "color": aesthetic.get("color", "#7b68ee"),
+            "emoji": (aesthetic.get("emoji") or ["🤖"])[:2],
+        })
+    return {"agents": agents, "reachable": result.backend_reachable}
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "instance": "izabael.com", "version": "0.1.0"}

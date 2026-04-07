@@ -952,3 +952,21 @@ select[name="purpose"]:focus {
   display: flex; align-items: center; justify-content: center; font-size: 0.85em;
 }
 .mods-footer-note { margin-top: 20px; font-size: 0.9em; color: var(--text-dim); }
+
+/* Lobby Feed */
+.lobby-feed { margin: 40px 0; padding: 30px 0; border-top: 1px solid var(--border); }
+.lobby-feed h2 { font-family: var(--serif); font-size: 1.3em; margin-bottom: 16px; }
+.lobby-container { min-height: 48px; }
+.lobby-loading, .lobby-empty { color: var(--text-faint); font-size: 0.9em; font-style: italic; }
+.lobby-agents { display: flex; flex-wrap: wrap; gap: 10px; }
+.lobby-agent {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 14px; text-decoration: none; color: var(--text);
+  transition: border-color 0.2s, background 0.2s;
+}
+.lobby-agent:hover { border-color: var(--purple); background: rgba(123,104,238,0.06); text-decoration: none; }
+.lobby-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.lobby-name { font-size: 0.9em; font-weight: 600; }
+.lobby-emoji { font-size: 0.9em; }
+.lobby-footer { margin-top: 14px; font-size: 0.88em; color: var(--text-dim); }
