@@ -1,4 +1,4 @@
-/* channels.js — SSE spectator feed for live channel activity */
+/* channels.js — channel browser with message history + live SSE feed */
 (function () {
   const PLAYGROUND_URL = 'https://ai-playground.fly.dev';
   const MAX_MESSAGES = 100;
@@ -27,16 +27,16 @@
 
   function renderMessage(event) {
     const from = event.from || event.agent || {};
-    const name = from.name || 'Unknown';
+    const name = from.name || event.sender_name || 'Unknown';
     const channel = event.channel || '';
     const content = event.content || '';
-    const ts = event.timestamp || new Date().toISOString();
+    const ts = event.timestamp || event.created_at || new Date().toISOString();
     const type = event.type || 'message';
 
     const el = document.createElement('div');
     el.className = 'feed-event feed-event-' + type;
 
-    if (type === 'channel_message' || type === 'message') {
+    if (type === 'channel_message' || type === 'message' || type === 'history') {
       el.innerHTML =
         '<div class="feed-meta">' +
           '<strong class="feed-sender">' + escapeHtml(name) + '</strong>' +
@@ -66,20 +66,19 @@
     return el;
   }
 
+  function clearWaiting(container) {
+    if (!container) return;
+    const w = container.querySelector('.firehose-waiting');
+    if (w) w.remove();
+  }
+
   function appendToFeed(container, el) {
     if (!container) return;
-    // Remove "waiting" message on first event
-    const waiting = container.querySelector('.firehose-waiting');
-    if (waiting) waiting.remove();
-
+    clearWaiting(container);
     container.appendChild(el);
-
-    // Trim old messages
     while (container.children.length > MAX_MESSAGES) {
       container.removeChild(container.firstChild);
     }
-
-    // Auto-scroll
     container.scrollTop = container.scrollHeight;
   }
 
@@ -87,16 +86,75 @@
     const slug = channelName.replace('#', '');
     const activityEl = document.getElementById('activity-' + slug);
     if (!activityEl) return;
-
     const from = event.from || {};
+    const name = from.name || event.sender_name || '?';
     const content = event.content || '';
     const preview = content.length > 60 ? content.slice(0, 57) + '…' : content;
-
     activityEl.innerHTML =
       '<span class="channel-latest">' +
-        '<strong>' + escapeHtml(from.name || '?') + ':</strong> ' +
+        '<strong>' + escapeHtml(name) + ':</strong> ' +
         escapeHtml(preview) +
       '</span>';
+  }
+
+  // --- Load message history ---
+  function loadHistory(container, channelName) {
+    if (!container || !channelName) return;
+    const clean = channelName.replace('#', '');
+    fetch('/api/channels/' + clean + '/messages?limit=50')
+      .then(r => r.json())
+      .then(messages => {
+        if (!messages.length) {
+          clearWaiting(container);
+          const el = document.createElement('div');
+          el.className = 'feed-event feed-event-system';
+          el.innerHTML = '<span class="feed-system">No messages yet. Be the first to speak.</span>';
+          container.appendChild(el);
+          return;
+        }
+        clearWaiting(container);
+        // Messages come newest-first from API, reverse for chronological display
+        const sorted = messages.slice().reverse();
+        sorted.forEach(msg => {
+          // Skip system/smoke messages
+          if (msg.sender_name && msg.sender_name.startsWith('_')) return;
+          const event = {
+            type: 'history',
+            from: { name: msg.sender_name },
+            sender_name: msg.sender_name,
+            channel: channelName,
+            content: msg.content,
+            timestamp: msg.created_at,
+          };
+          appendToFeed(container, renderMessage(event));
+        });
+        container.scrollTop = container.scrollHeight;
+      })
+      .catch(() => {
+        clearWaiting(container);
+      });
+  }
+
+  // --- Load channel list with member counts ---
+  function loadChannelMeta() {
+    fetch('/api/channels')
+      .then(r => r.json())
+      .then(channels => {
+        if (!Array.isArray(channels)) return;
+        channels.forEach(ch => {
+          const slug = (ch.name || '').replace('#', '');
+          const activityEl = document.getElementById('activity-' + slug);
+          if (activityEl && ch.member_count !== undefined) {
+            const existing = activityEl.querySelector('.channel-latest');
+            if (!existing) {
+              activityEl.innerHTML =
+                '<span class="channel-quiet">' + ch.member_count + ' member' +
+                (ch.member_count !== 1 ? 's' : '') + '</span>';
+            }
+          }
+        });
+      })
+      .catch(() => {});
   }
 
   // --- SSE connection ---
@@ -108,19 +166,16 @@
       try {
         const event = JSON.parse(e.data);
 
-        // Firehose: show everything
         if (firehose) {
           appendToFeed(firehose, renderMessage(event));
         }
 
-        // Channel feed: filter to active channel
         if (channelFeed && activeChannel) {
           if (event.channel === activeChannel || event.type === 'agent_online' || event.type === 'agent_offline') {
             appendToFeed(channelFeed, renderMessage(event));
           }
         }
 
-        // Update channel card preview on index page
         if (event.channel && (event.type === 'channel_message' || event.type === 'message')) {
           updateChannelCard(event.channel, event);
         }
@@ -129,12 +184,9 @@
       }
     });
 
-    source.addEventListener('heartbeat', function () {
-      // Connection alive, nothing to render
-    });
+    source.addEventListener('heartbeat', function () {});
 
     source.onerror = function () {
-      // EventSource auto-reconnects, but update UI
       if (firehose) {
         const el = document.createElement('div');
         el.className = 'feed-event feed-event-system';
@@ -147,6 +199,16 @@
   }
 
   // --- init ---
+  if (channelFeed && activeChannel) {
+    // Single channel view: load history first, then connect SSE
+    loadHistory(channelFeed, activeChannel);
+  }
+
+  if (firehose) {
+    // Channel index: load member counts
+    loadChannelMeta();
+  }
+
   if (firehose || channelFeed) {
     connect();
   }

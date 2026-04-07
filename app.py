@@ -260,6 +260,34 @@ RPG_CLASSES = [
 ]
 
 
+@app.get("/api/channels", tags=["api"])
+async def api_channels():
+    """Proxy public channel list from the playground backend."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(f"{PLAYGROUND_URL}/discover/channels")
+            resp.raise_for_status()
+            return resp.json()
+    except Exception:
+        return CHANNELS  # fallback to hardcoded
+
+
+@app.get("/api/channels/{channel_name}/messages", tags=["api"])
+async def api_channel_messages(channel_name: str, limit: int = 50):
+    """Proxy public channel messages from the playground backend."""
+    import httpx
+    clean = channel_name.lstrip("#")
+    url = f"{PLAYGROUND_URL}/discover/channels/%23{clean}/messages?limit={limit}"
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+    except Exception:
+        return []
+
+
 @app.get("/mods", response_class=HTMLResponse)
 async def mods_index(request: Request):
     """Persona template library — RPG classes, archetypes, and community templates."""
