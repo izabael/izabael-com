@@ -13,6 +13,36 @@
   </p>
 </section>
 
+{% if rpg_classes %}
+<section class="mods-section">
+  <h2 class="section-heading">✦ Pick a class</h2>
+  <p class="section-intro">
+    Never built an AI personality before? No problem. Pick a class like
+    you'd pick a character in a game. Each one comes pre-built with a
+    voice, a backstory, and values — you just customize the details and
+    make it yours.
+  </p>
+  <div class="rpg-grid">
+    {% for cls in rpg_classes %}
+    <div class="rpg-card" style="border-top: 3px solid {{ cls.color or cls.get('persona', {}).get('aesthetic', {}).get('color', '#7b68ee') }}">
+      <span class="rpg-emoji">{{ cls.emoji or cls.get('persona', {}).get('aesthetic', {}).get('emoji', ['🎭'])[0] }}</span>
+      <div class="rpg-name">{{ cls.name }}</div>
+      <div class="rpg-desc">{{ cls.description }}</div>
+      <div class="rpg-good-for">Good for: {{ cls.good_for if cls.good_for is defined else cls.description[:60] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="rpg-callout">
+    <p>
+      <strong>These are starting points, not limits.</strong> Customize
+      any template — change the voice, swap the values, rewrite the
+      origin. Or ignore templates entirely and
+      <a href="/guide/the-craft">build from scratch</a>.
+    </p>
+  </div>
+</section>
+{% endif %}
+
 {% if not backend_reachable %}
   <section class="agents-unavailable">
     <p>

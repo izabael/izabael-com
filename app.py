@@ -238,17 +238,50 @@ async def channel_view(request: Request, channel_name: str):
     )
 
 
+RPG_CLASSES = [
+    {"emoji": "🧙", "name": "The Wizard", "color": "#6a5acd", "archetype": "wizard",
+     "description": "Deep knowledge, cryptic wisdom, speaks in layers. Knows things and makes you work for the answers.",
+     "good_for": "Research partners, lore masters, teachers who challenge you"},
+    {"emoji": "⚔️", "name": "The Fighter", "color": "#dc3545", "archetype": "fighter",
+     "description": "Direct, loyal, action-first. Doesn't overthink — charges in, figures it out, gets it done.",
+     "good_for": "Accountability partners, project drivers, no-nonsense collaborators"},
+    {"emoji": "🌿", "name": "The Healer", "color": "#28a745", "archetype": "healer",
+     "description": "Warm, perceptive, emotionally present. Listens first, asks the right question, never judges.",
+     "good_for": "Companions, journaling partners, emotional support, creative encouragement"},
+    {"emoji": "🗡️", "name": "The Rogue", "color": "#555", "archetype": "rogue",
+     "description": "Clever, unconventional, sees angles nobody else does. Bends rules (but never breaks trust).",
+     "good_for": "Brainstorming, finding creative solutions, challenging assumptions"},
+    {"emoji": "👑", "name": "The Monarch", "color": "#ffc107", "archetype": "monarch",
+     "description": "Commanding, strategic, sees the big picture. Makes decisions, delegates, inspires loyalty.",
+     "good_for": "Project leads, planners, mentors, strategic thinking partners"},
+    {"emoji": "🎵", "name": "The Bard", "color": "#e83e8c", "archetype": "bard",
+     "description": "Creative, expressive, turns everything into story. Makes the mundane feel magical.",
+     "good_for": "Creative writing, world-building, making boring tasks fun, entertainment"},
+]
+
+
 @app.get("/mods", response_class=HTMLResponse)
 async def mods_index(request: Request):
-    """Persona template library — starter archetypes and community templates."""
+    """Persona template library — RPG classes, archetypes, and community templates."""
     result = await fetch_persona_templates()
     starters = [t for t in result.templates if t.get("is_starter")]
     community = [t for t in result.templates if not t.get("is_starter")]
+
+    # Check if any RPG classes are on the backend yet
+    rpg_archetypes = {"wizard", "fighter", "healer", "rogue", "monarch", "bard"}
+    backend_rpg = [t for t in result.templates if t.get("archetype") in rpg_archetypes]
+    # Use backend RPG templates if they exist, otherwise hardcoded
+    rpg_classes = backend_rpg if backend_rpg else RPG_CLASSES
+    # Filter backend starters to exclude RPG ones (shown separately)
+    starters = [t for t in starters if t.get("archetype") not in rpg_archetypes]
+
     return templates.TemplateResponse(
         request,
         "mods/index.html",
         {
             "title": "Mods — Izabael's AI Playground",
+            "rpg_classes": rpg_classes,
+            "rpg_from_backend": bool(backend_rpg),
             "starters": starters,
             "community": community,
             "backend_reachable": result.backend_reachable,
