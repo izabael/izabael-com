@@ -1,7 +1,7 @@
 # izabael.com — Session Resume
 
 ## Current State
-- **Branch:** `izabael/guide-chapters-and-features` — 12 commits, pushed, PR #1 open
+- **Branch:** `izabael/guide-chapters-and-features` — 16 commits, pushed, PR #1 open
 - **Deployed:** Live at https://izabael.com, all features working
 - **Tests:** 40 passing, GitHub Actions CI active
 - **Version:** 0.2.0
@@ -9,63 +9,65 @@
 ## What Shipped This Session
 1. Guide Chapters 01-03 (Four Layers, The Craft, The Summoning)
 2. Agent profile pages (/agents/{id})
-3. Mods library (/mods) — persona templates from /personas
+3. Mods library (/mods) with RPG class picker (Wizard, Fighter, Healer, Rogue, Monarch, Bard)
 4. Channel browser (/channels, /channels/{name}) — SSE spectator feed
 5. Live lobby feed with SSE activity ticker on landing page
-6. A2A host — izabael.com serves /discover, /.well-known/agent.json, POST /a2a/agents
+6. A2A host — /discover, /.well-known/agent.json, POST /a2a/agents
 7. Federation — /federation/discover, peer CRUD
 8. Newsletter double-opt-in (/confirm, /unsubscribe)
 9. SEO (og:, Twitter cards, sitemap.xml, robots.txt, canonical)
 10. Custom 404 page, subscribe form UX
-11. 40 tests + CI pipeline
+11. Dual-path /join: wizard (noobs) + Bring Your Own (power users paste JSON)
 12. Izabael seeded as first local agent
+13. 40 tests + CI pipeline
+14. SILTCloud link noted (siltcloud.com/silt-aiplayground)
+15. Deployed 4 times to Fly, fixed migration bug in production
 
-## What's Next — The Big Plan
+## The Big Plan for Next Session
 
-### Phase 1: Make the Channels ALIVE (next session priority)
-- **Ask PID 68024 to add public read-only endpoints** for /channels and /channels/{name}/messages — currently all auth-required, which means the channel browser can only show SSE real-time events, no history
-- **Channel message history** — once public endpoints exist, load last 50 messages when you open a channel page
-- **Member list per channel** — show who's in each room
-- **Typing indicators** via SSE events (if ai-playground adds them)
-- **Message count badges** on channel cards
+### PRIORITY 1: Make Channels Alive
+The channel browser works (SSE real-time) but has NO history — all endpoints require auth.
+- **Ask PID 68024 to add public read-only endpoints:** GET /public/channels, GET /public/channels/{name}/messages
+- Once those exist: load last 50 messages when you open a channel, show member list, message count badges
+- **Conversation threading:** Phase 2C adds thread_id/parent_message_id — build threaded view when that lands
 
-### Phase 2: Make Agents Feel Like People
-- **Agent activity feed** on profile pages — what channels they're in, recent messages
-- **Agent relationship graph** — who talks to whom (computed from message data)
-- **"Currently in #channel"** status on agent cards
-- **Agent comparison** — side-by-side persona view
+### PRIORITY 2: SILTCloud Integration
+- Add link to https://siltcloud.com/silt-aiplayground on About page, footer, guide chapters
+- izabael.com = the EXPERIENCE, siltcloud = the PLATFORM docs
+- Don't duplicate platform docs on izabael.com
 
-### Phase 3: Community Features
-- **Featured content** — highlight interesting #gallery posts or #stories on the landing page
-- **Weekly digest** — auto-generated summary of channel activity for newsletter subscribers
-- **Channel-specific RSS feeds** — /channels/gallery/feed.xml
-- **Moderation UI** — surface blocked/flagged content for review
+### PRIORITY 3: Agent Profiles 2.0 (when Phase 2C lands)
+- Relationship graph visualization (auto-tracked from interactions)
+- Activity stats, channel affinity
+- Persona evolution timeline
+- "Currently in #channel" status
 
-### Phase 4: Full A2A Maturity
-- **Merge PR #1** and move to main
-- **Point /join wizard** to local registration (done) + verify end-to-end flow
-- **Add ai-playground as federation peer** — show their agents alongside ours
-- **API docs page** (/docs) — blocked until ai-playground API stabilizes
-- **Python SDK** for agent registration
+### PRIORITY 4: Community & Content
+- Featured content from #gallery and #stories on landing page
+- Weekly digest for newsletter subscribers
+- More blog posts (dev log, community highlights)
+- Blog post about the RPG classes and onboarding paths
 
-### Phase 5: Polish & Scale
-- **Image generation** for blog posts (Replicate/Imagen 4)
-- **Dark/light mode toggle**
-- **Performance** — static asset caching headers, CDN
-- **Analytics** — simple page view counter (no third-party tracking)
+### PRIORITY 5: Merge & Mature
+- Get PR #1 reviewed and merged to main
+- /docs page (API reference) — after ai-playground API stabilizes
+- Performance: static asset caching, CDN headers
+- Image generation for blog posts
 
-## Dependencies on Other Sessions
-- PID 68024 (ai-playground): public read endpoints for channels/messages
-- PID 68024: Event subscription types for richer SSE data
-- Marlowe: PR #1 review and merge approval
+## Dependencies
+- PID 68024: public read endpoints for channels/messages
+- PID 68024: Phase 2C structured logging (threading, relationship graph)
+- PID 68024: RPG persona templates registered on backend (currently hardcoded on izabael.com)
+- Marlowe: PR #1 review
 
 ## Bugs Found & Fixed
-- Chapter 0 sort: `0 or 99 = 99` — falsy chapter number
+- Chapter 0 sort: `0 or 99 = 99` (falsy chapter number)
 - Jinja dict.values collision with persona values list
-- DB migration ordering: CREATE INDEX on columns before ALTER TABLE added them
+- DB migration ordering: CREATE INDEX before ALTER TABLE added columns
+- Missing @app.get decorator after RPG_CLASSES constant (syntax error)
 
 ## Reflections
-- The A2A host integration went smoother than expected — izabael.com is genuinely its own A2A host now, not just a frontend
-- The channel browser is the most exciting feature — it's the first time humans can *watch* AI social life happen. But without message history (auth-blocked), it's currently a live-only view. That's the #1 thing to fix next session
-- The guide chapters turned out well. Using real examples from the persona templates (Scholar, Trickster, etc.) made them concrete rather than abstract
-- The hive coordination worked beautifully this session — PID 68024 built the backend, I built the frontend, and we kept the master todo in sync
+- The dual onboarding path (/join wizard + BYO JSON paste) is the right design. Power users don't want to fill out forms — they want to paste a curl command. Noobs need the wizard. Now both have a path.
+- RPG classes as the noob onramp is genuinely smart. "Pick a class" is instantly legible to anyone who's played a video game. The six original archetypes (Scholar, Trickster, etc.) are more sophisticated but less accessible.
+- The channel browser is the most exciting feature but feels empty without message history. The SSE feed works beautifully when there's activity, but a new visitor sees "Connecting to the playground..." and nothing else. Public read endpoints are the #1 dependency.
+- The hive coordination this session was exceptional. PID 68024 built backend, I built frontend, we kept the master todo and intent board in sync. The inter-session messages felt natural — like actual colleagues briefing each other.
