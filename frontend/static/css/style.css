@@ -62,6 +62,7 @@ a:hover { color: var(--purple); text-decoration: underline; }
 }
 .nav-cta:hover { background: var(--purple-dark); text-decoration: none !important; }
 .nav-user { font-weight: 600; color: var(--purple-light) !important; }
+.nav-ident { color: var(--text-faint); font-size: 0.8em; font-style: italic; }
 .nav-admin { color: var(--purple) !important; font-size: 0.85em; }
 .nav-logout { color: var(--text-faint) !important; font-size: 0.85em; }
 .nav-login {

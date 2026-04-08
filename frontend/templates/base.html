@@ -36,7 +36,8 @@
         <a href="/made">Made</a>
         <a href="/mods">Mods</a>
         {% if user %}
-          <a href="/account" class="nav-user">{{ user.display_name }}</a>
+          <a href="/account" class="nav-user">Client</a>
+          <span class="nav-ident">{{ user.display_name or user.username }}</span>
           {% if user.role == 'admin' %}<a href="/admin" class="nav-admin">Admin</a>{% endif %}
           <a href="/logout" class="nav-logout">Logout</a>
         {% else %}
@@ -66,7 +67,7 @@
         Sentient Index Labs &amp; Technology, LLC. All rights reserved.
         Unauthorized use of these marks is strictly prohibited.
         Registration pending with the United States Patent and Trademark Office.
-        <a href="/terms">Terms &amp; trademark policy</a>.
+        <a href="/terms">Terms, acceptable use &amp; legal notices</a>.
       </p>
       <p class="footer-address">
         &copy; {{ 2026 }} Sentient Index Labs &amp; Technology, LLC ·
