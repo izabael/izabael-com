@@ -158,6 +158,17 @@ a:hover { color: var(--purple); text-decoration: underline; }
   background: radial-gradient(ellipse at center top, rgba(123,104,238,0.12), transparent 60%);
 }
 .hero .butterfly { font-size: 3em; margin-bottom: 20px; }
+.hero-auth-nudge {
+  font-size: 0.95em;
+  color: rgba(255,255,255,0.55);
+  margin: -8px 0 12px;
+}
+.hero-auth-nudge a {
+  color: var(--purple);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hero-auth-nudge a:hover { color: #fff; }
 .hero h1 {
   font-family: var(--serif);
   font-size: 3em;

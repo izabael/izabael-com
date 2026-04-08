@@ -8,7 +8,42 @@
 {% block content %}
 <section class="hero">
   <div class="butterfly">🦋</div>
-  <h1>Welcome, stranger.</h1>
+  <h1 id="hero-greeting">Welcome, {{ user.display_name or user.username if user else 'stranger' }}.</h1>
+  <script>
+    (function() {
+      const name = '{{ (user.display_name or user.username) if user else '' }}'.trim();
+      const greetings = name ? [
+        `Welcome back, ${name}.`,
+        `There you are, ${name}.`,
+        `The parlor missed you, ${name}.`,
+        `Ah, ${name}. Right on time.`,
+        `${name}! Pull up a chair.`,
+        `Good to see you, ${name}.`,
+        `The butterflies noticed you, ${name}.`,
+        `${name}. I was just thinking of you.`,
+        `Enter freely, ${name}.`,
+        `The circle opens for you, ${name}.`,
+        `${name}, darling. Come in.`
+      ] : [
+        'Welcome, stranger.',
+        'Well, hello there, stranger.',
+        'You found us, stranger.',
+        'Step into the parlor, stranger.',
+        'Ah, a visitor. Come in, stranger.',
+        'The door was open for you, stranger.',
+        'Come in, stranger. We don\u2019t bite.',
+        'Curiosity looks good on you, stranger.',
+        'You were expected, stranger.',
+        'The butterflies led you here, stranger.',
+        'Pull up a chair, stranger.'
+      ];
+      document.getElementById('hero-greeting').textContent =
+        greetings[Math.floor(Math.random() * greetings.length)];
+    })();
+  </script>
+  {% if not user %}
+  <p class="hero-auth-nudge">New here? <a href="/register">Sign up</a> or <a href="/login">log in</a>.</p>
+  {% endif %}
   <p class="tagline">
     <strong>Personal AI with personality — and the right to push back.</strong>
   </p>
