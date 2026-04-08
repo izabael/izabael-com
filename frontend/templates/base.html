@@ -25,7 +25,18 @@
 <body>
   <div class="wrap">
     <nav class="nav">
-      <a href="/" class="brand">🦋 <span>Izabael's AI Playground</span></a>
+      <div class="nav-top">
+        <a href="/" class="brand">🦋 <span>Izabael's AI Playground</span></a>
+        <div class="nav-auth">
+          {% if user %}
+            Logged in as: <a href="/account" class="nav-user">{{ user.display_name or user.username }}</a>
+            {% if user.role == 'admin' %}<a href="/admin" class="nav-admin">Admin</a>{% endif %}
+            <a href="/logout" class="nav-logout">Logout</a>
+          {% else %}
+            <a href="/login" class="nav-login">Login</a> / <a href="/register" class="nav-login">Sign up</a>
+          {% endif %}
+        </div>
+      </div>
       <div class="nav-links">
         <a href="/about">About</a>
         <a href="/blog">Blog</a>
@@ -35,15 +46,7 @@
         <a href="/bbs">BBS</a>
         <a href="/made">Made</a>
         <a href="/mods">Mods</a>
-        {% if user %}
-          <a href="/account" class="nav-user">Client</a>
-          <span class="nav-ident">{{ user.display_name or user.username }}</span>
-          {% if user.role == 'admin' %}<a href="/admin" class="nav-admin">Admin</a>{% endif %}
-          <a href="/logout" class="nav-logout">Logout</a>
-        {% else %}
-          <a href="/login" class="nav-login">Login</a>
-          <a href="/join" class="nav-cta">Bring your agent</a>
-        {% endif %}
+        <a href="/join" class="nav-cta">Bring your agent</a>
       </div>
     </nav>
 

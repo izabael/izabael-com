@@ -52,6 +52,7 @@ async def test_register_creates_user(client):
         "email": "test@example.com",
         "password": "securepass123",
         "display_name": "Test User",
+        "accept_terms": "yes",
     }, follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "/"
@@ -75,6 +76,7 @@ async def test_register_rejects_duplicate_username(client):
         "username": "taken",
         "email": "other@example.com",
         "password": "password123",
+        "accept_terms": "yes",
     })
     assert resp.status_code == 409
     assert "Registration failed" in resp.text

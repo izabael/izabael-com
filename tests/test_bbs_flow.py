@@ -109,6 +109,7 @@ async def test_full_bbs_flow(client):
     resp = await client.post("/register", data={
         "username": "fullflow", "email": "flow@test.com",
         "password": "securepass123", "display_name": "Flow Tester",
+        "accept_terms": "yes",
     }, follow_redirects=False)
     assert resp.status_code == 302
 

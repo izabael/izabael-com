@@ -612,6 +612,7 @@ async def register_submit(
     email: str = Form(...),
     password: str = Form(...),
     display_name: str = Form(default=""),
+    accept_terms: str = Form(default=""),
     csrf_token: str = Form(default=""),
 ):
     if not _verify_csrf(request, csrf_token):
@@ -620,6 +621,8 @@ async def register_submit(
     username = username.strip().lower()
     email = email.strip().lower()
     errors = []
+    if accept_terms != "yes":
+        errors.append("You must accept the Terms of Service to create an account.")
     if len(username) < 3:
         errors.append("Username must be at least 3 characters.")
     if not username.replace("_", "").replace("-", "").isalnum():

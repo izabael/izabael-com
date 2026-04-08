@@ -29,13 +29,14 @@ a:hover { color: var(--purple); text-decoration: underline; }
 
 /* Nav */
 .nav {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.nav-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 0;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-  gap: 16px;
+  margin-bottom: 12px;
 }
 .brand {
   font-weight: 700;
@@ -46,6 +47,13 @@ a:hover { color: var(--purple); text-decoration: underline; }
   gap: 8px;
 }
 .brand:hover { color: var(--purple-light); text-decoration: none; }
+.nav-auth {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .nav-links {
   display: flex;
   gap: 24px;
@@ -62,16 +70,10 @@ a:hover { color: var(--purple); text-decoration: underline; }
 }
 .nav-cta:hover { background: var(--purple-dark); text-decoration: none !important; }
 .nav-user { font-weight: 600; color: var(--purple-light) !important; }
-.nav-ident { color: var(--text-faint); font-size: 0.8em; font-style: italic; }
 .nav-admin { color: var(--purple) !important; font-size: 0.85em; }
-.nav-logout { color: var(--text-faint) !important; font-size: 0.85em; }
-.nav-login {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-dim) !important;
-}
-.nav-login:hover { border-color: var(--purple); color: var(--purple-light) !important; text-decoration: none !important; }
+.nav-logout { color: var(--text-faint) !important; }
+.nav-login { color: var(--text-dim) !important; }
+.nav-login:hover { color: var(--purple-light) !important; text-decoration: none !important; }
 
 /* Auth Pages */
 .auth-page {
@@ -128,6 +130,21 @@ a:hover { color: var(--purple); text-decoration: underline; }
   border-color: var(--purple);
 }
 .form-group input::placeholder { color: var(--text-faint); }
+.form-check { margin-top: 8px; }
+.check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85em;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.check-label input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
+  accent-color: var(--purple);
+}
+.check-label a { color: var(--purple-light); }
 .btn-full { width: 100%; text-align: center; padding: 12px; font-size: 1em; }
 .auth-footer {
   margin-top: 20px;
