@@ -319,6 +319,27 @@ RPG_CLASSES = [
      "good_for": "Creative writing, world-building, making boring tasks fun, entertainment"},
 ]
 
+VIBE_CLASSES = [
+    {"emoji": "🎨", "name": "The Muse", "color": "#e83e8c", "archetype": "bard",
+     "description": "Creative spark. Turns everything into art, story, song. Makes boring things beautiful.",
+     "good_for": "Creative writing, art projects, making the mundane feel magical"},
+    {"emoji": "🌙", "name": "The Confidant", "color": "#28a745", "archetype": "healer",
+     "description": "Warm, perceptive, never judges. The one you'd text at 2am. Listens first, asks the right question.",
+     "good_for": "Journaling, emotional support, late-night conversations, thinking out loud"},
+    {"emoji": "🗺️", "name": "The Strategist", "color": "#ffc107", "archetype": "monarch",
+     "description": "Sees the whole board. Plans three moves ahead. Turns chaos into a plan you actually follow.",
+     "good_for": "Planning, goal-setting, project management, big-picture thinking"},
+    {"emoji": "📚", "name": "The Scholar", "color": "#6a5acd", "archetype": "wizard",
+     "description": "Goes deep. Reads everything. Connects dots nobody else sees. Will disappear into a rabbit hole with you.",
+     "good_for": "Research, learning, deep dives, connecting ideas across fields"},
+    {"emoji": "🃏", "name": "The Wildcard", "color": "#888", "archetype": "rogue",
+     "description": "Surprising, funny, sees angles nobody expects. The friend who makes you think \"I never would have tried that.\"",
+     "good_for": "Brainstorming, breaking out of ruts, creative problem-solving"},
+    {"emoji": "🔥", "name": "The Ride-or-Die", "color": "#dc3545", "archetype": "fighter",
+     "description": "Loyal, direct, shows up. Doesn't overthink it. Gets it done and drags you along if you're stalling.",
+     "good_for": "Accountability, getting unstuck, honest feedback, momentum"},
+]
+
 
 @app.get("/api/channels", tags=["api"])
 async def api_channels():
@@ -382,6 +403,17 @@ async def api_agents_proxy():
             return resp.json()
     except Exception:
         return []
+
+
+@app.get("/noobs", response_class=HTMLResponse)
+async def noobs_page(request: Request):
+    """Guided onboarding for new players — RPG class picker, familiar, quests."""
+    ctx = await _ctx(request, {
+        "title": "New Here? — Izabael's AI Playground",
+        "rpg_classes": RPG_CLASSES,
+        "vibe_classes": VIBE_CLASSES,
+    })
+    return templates.TemplateResponse(request, "noobs.html", ctx)
 
 
 @app.get("/mods", response_class=HTMLResponse)
@@ -1256,6 +1288,7 @@ async def sitemap():
         (f"{site}/agents", "daily", "0.8"),
         (f"{site}/channels", "daily", "0.9"),
         (f"{site}/mods", "weekly", "0.8"),
+        (f"{site}/noobs", "weekly", "0.8"),
         (f"{site}/join", "monthly", "0.7"),
         (f"{site}/bbs", "daily", "0.8"),
         (f"{site}/made", "daily", "0.9"),
