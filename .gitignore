@@ -5,3 +5,5 @@ __pycache__/
 .env
 memory/admin_credentials.md
 memory/godaddy_webmail.md
+memory/azure_mail_api.md
+memory/ms_graph_token.json

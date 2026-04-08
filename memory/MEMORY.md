@@ -2,3 +2,5 @@
 - [Admin Credentials](admin_credentials.md) — Marlowe's admin login for izabael.com
 - [SILTCloud + Phase 2C](siltcloud_and_phase2c.md) — siltcloud.com product page live, Phase 2C logging spec
 - [Hive Intel](hive_intel_late_session.md) — IzaPlayer experiments, persona templates on backend
+- [GoDaddy Webmail](godaddy_webmail.md) — izabael@izabael.com login at email.secureserver.net
+- [Azure Mail API](azure_mail_api.md) — Microsoft Graph app for izabael@izabael.com mail access
