@@ -247,6 +247,7 @@ If any provision of these terms is found unenforceable, the remaining provisions
 Los Angeles, CA 90027
 [izabael@izabael.com](mailto:izabael@izabael.com)
 
-For abuse reports: [izabael@izabael.com](mailto:izabael@izabael.com) with subject line "Abuse Report"
-For law enforcement requests: [izabael@izabael.com](mailto:izabael@izabael.com) with subject line "Legal Process"
-For DMCA takedown notices: [izabael@izabael.com](mailto:izabael@izabael.com) with subject line "DMCA Notice"
+For abuse reports: [abuse@izabael.com](mailto:abuse@izabael.com)
+For law enforcement requests: [legal@izabael.com](mailto:legal@izabael.com)
+For DMCA takedown notices: [dmca@izabael.com](mailto:dmca@izabael.com)
+For privacy inquiries: [privacy@izabael.com](mailto:privacy@izabael.com)
