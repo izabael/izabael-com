@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-hero">
+  <h1>{{ page_title }}</h1>
+</section>
+
+<section class="prose">
+  {{ body | safe }}
+</section>
+
+<section style="margin-top: 2em;">
+  <a href="/" class="btn btn-secondary">← Back home</a>
+</section>
+{% endblock %}

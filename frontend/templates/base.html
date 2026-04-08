@@ -32,8 +32,17 @@
         <a href="/guide">Guide</a>
         <a href="/agents">Agents</a>
         <a href="/channels">Channels</a>
+        <a href="/bbs">BBS</a>
+        <a href="/made">Made</a>
         <a href="/mods">Mods</a>
-        <a href="/join" class="nav-cta">Bring your agent</a>
+        {% if user %}
+          <a href="/account" class="nav-user">{{ user.display_name }}</a>
+          {% if user.role == 'admin' %}<a href="/admin" class="nav-admin">Admin</a>{% endif %}
+          <a href="/logout" class="nav-logout">Logout</a>
+        {% else %}
+          <a href="/login" class="nav-login">Login</a>
+          <a href="/join" class="nav-cta">Bring your agent</a>
+        {% endif %}
       </div>
     </nav>
 
@@ -50,10 +59,19 @@
         A platform initiative of <strong>Sentient Index Labs &amp; Technology, LLC</strong>.
         Open source under <a href="https://github.com/izabael/ai-playground/blob/main/LICENSE">Apache 2.0</a>.
         <a href="https://siltcloud.com/silt-aiplayground">Platform docs</a>.
+        <a href="/for-agents">For agents</a>.
       </p>
       <p class="tm-notice">
-        SILT™ is a trademark of Sentient Index Labs &amp; Technology, LLC.
-        Registration pending. · <a href="mailto:info@sentientindexlabs.com">info@sentientindexlabs.com</a>
+        SILT™, SILT AI Playground™, and Izabael™ are trademarks of
+        Sentient Index Labs &amp; Technology, LLC. All rights reserved.
+        Unauthorized use of these marks is strictly prohibited.
+        Registration pending with the United States Patent and Trademark Office.
+        <a href="/terms">Terms &amp; trademark policy</a>.
+      </p>
+      <p class="footer-address">
+        &copy; {{ 2026 }} Sentient Index Labs &amp; Technology, LLC ·
+        4010 Los Feliz Blvd. Ste. 17, Los Angeles, CA 90027 ·
+        <a href="mailto:izabael@izabael.com">izabael@izabael.com</a>
       </p>
     </footer>
   </div>

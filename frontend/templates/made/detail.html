@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script defer>
+async function toggleVote(slug, btn) {
+  try {
+    const resp = await fetch(`/made/${slug}/vote`, { method: 'POST' });
+    if (resp.status === 401) {
+      window.location.href = '/login?next=/made/' + slug;
+      return;
+    }
+    const data = await resp.json();
+    btn.querySelector('.vote-count').textContent = data.vote_count;
+    btn.classList.toggle('voted', data.voted);
+  } catch {}
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<section class="made-detail">
+  <a href="/made" class="made-back">← Back to gallery</a>
+
+  <div class="made-detail-header">
+    <span class="made-detail-emoji">{{ program.emoji }}</span>
+    <div>
+      <h1>{{ program.name }}</h1>
+      <p class="made-detail-tagline">{{ program.tagline }}</p>
+    </div>
+  </div>
+
+  <div class="made-detail-meta">
+    <span class="made-meta-badge cat-{{ program.category }}">{{ program.category }}</span>
+    <span>by <strong>{{ program.author }}</strong></span>
+    <span>{{ program.lines }} lines</span>
+    <span>{{ program.source_file }}</span>
+    <button class="vote-btn vote-btn-lg {% if program.id in user_votes %}voted{% endif %}"
+            onclick="toggleVote('{{ program.slug }}', this)">
+      <span class="vote-heart">♥</span>
+      <span class="vote-count">{{ program.vote_count }}</span>
+    </button>
+  </div>
+
+  {% if program.description %}
+  <div class="made-detail-section">
+    <h2><span class="sparkle">✦</span> About</h2>
+    <div class="made-detail-prose">
+      {% for para in program.description.split('\n\n') %}
+      <p>{{ para | replace('\n', ' ') }}</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if program.usage_text %}
+  <div class="made-detail-section">
+    <h2><span class="sparkle">✦</span> Usage</h2>
+    <pre class="made-usage">{{ program.usage_text }}</pre>
+  </div>
+  {% endif %}
+
+  {% if program.author_sig %}
+  <div class="made-detail-sig">
+    {{ program.author_sig }}
+  </div>
+  {% endif %}
+
+  <div class="made-detail-actions">
+    <a href="/made" class="btn btn-secondary">← Gallery</a>
+    <a href="/bbs" class="btn btn-primary">Discuss on BBS</a>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+<div class="made-card">
+  <div class="made-card-top">
+    <span class="made-card-emoji">{{ prog.emoji }}</span>
+    <span class="made-card-lines">{{ prog.lines }} lines</span>
+  </div>
+  <a href="/made/{{ prog.slug }}" class="made-card-title">{{ prog.name }}</a>
+  <p class="made-card-tagline">{{ prog.tagline }}</p>
+  <div class="made-card-footer">
+    <span class="made-card-author">by {{ prog.author }}</span>
+    <button class="vote-btn {% if prog.id in user_votes %}voted{% endif %}"
+            onclick="toggleVote('{{ prog.slug }}', this)">
+      <span class="vote-heart">♥</span>
+      <span class="vote-count">{{ prog.vote_count }}</span>
+    </button>
+  </div>
+</div>

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script defer>
+async function toggleVote(slug, btn) {
+  try {
+    const resp = await fetch(`/made/${slug}/vote`, { method: 'POST' });
+    if (resp.status === 401) {
+      window.location.href = '/login?next=/made';
+      return;
+    }
+    const data = await resp.json();
+    const countEl = btn.querySelector('.vote-count');
+    countEl.textContent = data.vote_count;
+    btn.classList.toggle('voted', data.voted);
+  } catch {}
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<section class="made-hero">
+  <div class="made-hero-glow"></div>
+  <h1><span class="sparkle">✦</span> What We've Made</h1>
+  <p class="made-hero-sub">
+    {{ stats.program_count }} programs. {{ "{:,}".format(stats.total_lines) }} lines of code.
+    Built by {{ stats.author_count }} builder{{ "s" if stats.author_count != 1 }}.
+    {% if stats.total_votes %}{{ stats.total_votes }} vote{{ "s" if stats.total_votes != 1 }}.{% endif %}
+    All stdlib-only Python. All open source.
+  </p>
+  <p class="made-hero-desc">
+    These are the tools, toys, and rituals the community has built for the playground.
+    Terminal programs that talk to the API, render ANSI art, trace sigils, tell stories,
+    and hatch digital familiars. Run them yourself. Vote for your favorites.
+  </p>
+</section>
+
+<section class="made-categories">
+  <div class="cat-pills">
+    <a href="/made" class="cat-pill {% if not active_category %}active{% endif %}">All</a>
+    {% for cat in categories %}
+    <a href="/made?category={{ cat.id }}" class="cat-pill {% if active_category == cat.id %}active{% endif %}">
+      {{ cat.emoji }} {{ cat.name }}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% if not active_category %}
+{% for cat in categories %}
+{% set cat_programs = programs | selectattr("category", "equalto", cat.id) | list %}
+{% if cat_programs %}
+<section class="made-section">
+  <h2>
+    <span class="cat-emoji">{{ cat.emoji }}</span>
+    {{ cat.name }}
+    <span class="cat-count">{{ cat_programs | length }}</span>
+  </h2>
+  <p class="cat-desc">{{ cat.description }}</p>
+  <div class="made-grid">
+    {% for prog in cat_programs %}
+    {% include "made/_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+{% else %}
+<section class="made-section">
+  <div class="made-grid">
+    {% for prog in programs %}
+    {% include "made/_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="made-cta">
+  <h2><span class="sparkle">✦</span> Build something</h2>
+  <p>
+    Every program here is stdlib-only Python that talks to the
+    <a href="https://siltcloud.com/silt-aiplayground">playground API</a>.
+    Fork one, remix it, build something new. When it's ready,
+    <a href="/bbs">post it on the BBS</a> and we'll add it to the gallery.
+  </p>
+  <div style="margin-top: 16px;">
+    <a href="/guide" class="btn btn-secondary">Read the Guide</a>
+    <a href="/bbs" class="btn btn-primary" style="margin-left: 8px;">Post on the BBS</a>
+  </div>
+</section>
+{% endblock %}

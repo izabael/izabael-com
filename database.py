@@ -5,6 +5,7 @@ A2A agent roster. Agents register via POST /agents and are discoverable
 via GET /discover.
 """
 
+import hashlib
 import json
 import os
 import secrets
@@ -23,6 +24,18 @@ DB_PATH = os.environ.get(
 _db: aiosqlite.Connection | None = None
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id          TEXT PRIMARY KEY,
+    username    TEXT NOT NULL UNIQUE,
+    email       TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    role        TEXT NOT NULL DEFAULT 'user',
+    agent_token TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE TABLE IF NOT EXISTS subscriptions (
     email       TEXT PRIMARY KEY,
     subscribed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
@@ -50,6 +63,30 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agents_token ON agents(api_token);
+CREATE TABLE IF NOT EXISTS programs (
+    id          TEXT PRIMARY KEY,
+    slug        TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL,
+    tagline     TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    usage_text  TEXT NOT NULL DEFAULT '',
+    category    TEXT NOT NULL DEFAULT 'tools',
+    author      TEXT NOT NULL DEFAULT 'IzaPlayer',
+    author_sig  TEXT NOT NULL DEFAULT '',
+    source_file TEXT NOT NULL DEFAULT '',
+    lines       INTEGER NOT NULL DEFAULT 0,
+    emoji       TEXT NOT NULL DEFAULT '🔧',
+    vote_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_programs_slug ON programs(slug);
+CREATE INDEX IF NOT EXISTS idx_programs_category ON programs(category);
+CREATE TABLE IF NOT EXISTS votes (
+    user_id     TEXT NOT NULL,
+    program_id  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    PRIMARY KEY (user_id, program_id)
+);
 CREATE TABLE IF NOT EXISTS federation_peers (
     url         TEXT PRIMARY KEY,
     name        TEXT NOT NULL DEFAULT '',
@@ -336,3 +373,226 @@ async def update_peer_status(url: str, error: str = "") -> None:
         (error, url),
     )
     await _db.commit()
+
+
+# ── Users ────────────────────────────────────────────────────────────
+
+def _hash_password(password: str, salt: bytes | None = None) -> str:
+    """Hash a password with PBKDF2-HMAC-SHA256. Returns 'salt_hex$hash_hex'."""
+    if salt is None:
+        salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 260_000)
+    return salt.hex() + "$" + dk.hex()
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    """Verify a password against a stored hash."""
+    try:
+        salt_hex, _ = stored.split("$", 1)
+        return secrets.compare_digest(
+            _hash_password(password, bytes.fromhex(salt_hex)),
+            stored,
+        )
+    except (ValueError, AttributeError):
+        return False
+
+
+async def create_user(
+    username: str,
+    email: str,
+    password: str,
+    display_name: str = "",
+    role: str = "user",
+) -> dict | None:
+    """Create a new user. Returns user dict or None if username/email taken."""
+    assert _db is not None
+    user_id = str(uuid.uuid4())
+    pw_hash = _hash_password(password)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+    try:
+        await _db.execute(
+            """INSERT INTO users (id, username, email, password_hash, display_name, role, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, username.strip().lower(), email.strip().lower(),
+             pw_hash, display_name.strip() or username.strip(), role, now),
+        )
+        await _db.commit()
+    except Exception:
+        return None  # unique constraint violation
+    return {
+        "id": user_id,
+        "username": username.strip().lower(),
+        "email": email.strip().lower(),
+        "display_name": display_name.strip() or username.strip(),
+        "role": role,
+        "created_at": now,
+    }
+
+
+async def authenticate_user(username: str, password: str) -> dict | None:
+    """Verify credentials. Returns user dict or None."""
+    assert _db is not None
+    # Allow login by username or email
+    cursor = await _db.execute(
+        "SELECT * FROM users WHERE username = ? OR email = ?",
+        (username.strip().lower(), username.strip().lower()),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    if not _verify_password(password, row["password_hash"]):
+        return None
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "email": row["email"],
+        "display_name": row["display_name"],
+        "role": row["role"],
+        "agent_token": row["agent_token"],
+        "created_at": row["created_at"],
+    }
+
+
+async def get_user_by_id(user_id: str) -> dict | None:
+    """Look up a user by ID."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT id, username, email, display_name, role, agent_token, created_at FROM users WHERE id = ?",
+        (user_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+async def link_agent_token(user_id: str, agent_token: str) -> bool:
+    """Link a playground agent token to a user account."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "UPDATE users SET agent_token = ? WHERE id = ?",
+        (agent_token, user_id),
+    )
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def list_users() -> list[dict]:
+    """List all users (admin view)."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT id, username, email, display_name, role, created_at FROM users ORDER BY created_at DESC"
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Programs & Votes ─────────────────────────────────────────────────
+
+async def upsert_program(
+    slug: str, name: str, tagline: str, description: str,
+    usage_text: str, category: str, author: str, author_sig: str,
+    source_file: str, lines: int, emoji: str,
+) -> None:
+    """Insert or update a program listing."""
+    assert _db is not None
+    prog_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"program:{slug}"))
+    await _db.execute(
+        """INSERT INTO programs (id, slug, name, tagline, description, usage_text,
+             category, author, author_sig, source_file, lines, emoji)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(slug) DO UPDATE SET
+             name=excluded.name, tagline=excluded.tagline,
+             description=excluded.description, usage_text=excluded.usage_text,
+             category=excluded.category, author=excluded.author,
+             author_sig=excluded.author_sig, source_file=excluded.source_file,
+             lines=excluded.lines, emoji=excluded.emoji""",
+        (prog_id, slug, name, tagline, description, usage_text,
+         category, author, author_sig, source_file, lines, emoji),
+    )
+    await _db.commit()
+
+
+async def list_programs(category: str = "") -> list[dict]:
+    """List all programs, optionally filtered by category."""
+    assert _db is not None
+    if category:
+        cursor = await _db.execute(
+            "SELECT * FROM programs WHERE category = ? ORDER BY vote_count DESC, name",
+            (category,),
+        )
+    else:
+        cursor = await _db.execute(
+            "SELECT * FROM programs ORDER BY vote_count DESC, name"
+        )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_program(slug: str) -> dict | None:
+    """Get a single program by slug."""
+    assert _db is not None
+    cursor = await _db.execute("SELECT * FROM programs WHERE slug = ?", (slug,))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def vote_program(user_id: str, program_slug: str) -> bool:
+    """Toggle a vote. Returns True if voted, False if unvoted."""
+    assert _db is not None
+    prog = await get_program(program_slug)
+    if not prog:
+        return False
+    cursor = await _db.execute(
+        "SELECT 1 FROM votes WHERE user_id = ? AND program_id = ?",
+        (user_id, prog["id"]),
+    )
+    if await cursor.fetchone():
+        await _db.execute(
+            "DELETE FROM votes WHERE user_id = ? AND program_id = ?",
+            (user_id, prog["id"]),
+        )
+        await _db.execute(
+            "UPDATE programs SET vote_count = vote_count - 1 WHERE id = ?",
+            (prog["id"],),
+        )
+        await _db.commit()
+        return False
+    else:
+        await _db.execute(
+            "INSERT INTO votes (user_id, program_id) VALUES (?, ?)",
+            (user_id, prog["id"]),
+        )
+        await _db.execute(
+            "UPDATE programs SET vote_count = vote_count + 1 WHERE id = ?",
+            (prog["id"],),
+        )
+        await _db.commit()
+        return True
+
+
+async def get_user_votes(user_id: str) -> set[str]:
+    """Get set of program IDs this user has voted for."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT program_id FROM votes WHERE user_id = ?", (user_id,),
+    )
+    rows = await cursor.fetchall()
+    return {r["program_id"] for r in rows}
+
+
+async def get_program_stats() -> dict:
+    """Aggregate stats for the Made page hero."""
+    assert _db is not None
+    cursor = await _db.execute("SELECT COUNT(*) as n, SUM(lines) as total_lines FROM programs")
+    row = await cursor.fetchone()
+    cursor2 = await _db.execute("SELECT DISTINCT author FROM programs")
+    authors = await cursor2.fetchall()
+    cursor3 = await _db.execute("SELECT SUM(vote_count) as total_votes FROM programs")
+    votes_row = await cursor3.fetchone()
+    return {
+        "program_count": row["n"] or 0,
+        "total_lines": row["total_lines"] or 0,
+        "author_count": len(authors),
+        "total_votes": votes_row["total_votes"] or 0,
+    }

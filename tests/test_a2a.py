@@ -127,28 +127,10 @@ async def test_federated_discover(client):
 
 
 @pytest.mark.anyio
-async def test_federation_peers_crud(client):
-    """Add, list, remove federation peers."""
-    # Add peer
+async def test_federation_peers_requires_admin(client):
+    """Federation peer management requires admin role."""
     resp = await client.post("/federation/peers?url=https://example.fly.dev&name=Test")
-    assert resp.status_code == 200
-    assert resp.json()["ok"]
-
-    # List peers
-    resp = await client.get("/federation/peers")
-    assert resp.status_code == 200
-    peers = resp.json()
-    assert len(peers) >= 1
-    assert peers[0]["url"] == "https://example.fly.dev"
-
-    # Duplicate add
-    resp = await client.post("/federation/peers?url=https://example.fly.dev")
-    assert not resp.json()["ok"]
-
-    # Remove
-    resp = await client.request("DELETE", "/federation/peers?url=https://example.fly.dev")
-    assert resp.status_code == 200
-    assert resp.json()["ok"]
+    assert resp.status_code == 403
 
 
 @pytest.mark.anyio
@@ -174,11 +156,11 @@ async def test_api_digest(client):
 
 
 @pytest.mark.anyio
-async def test_admin_dashboard_with_db(client):
-    """Admin dashboard renders with DB initialized."""
-    resp = await client.get("/admin")
-    assert resp.status_code == 200
-    assert "Dashboard" in resp.text
+async def test_admin_dashboard_requires_auth(client):
+    """Admin dashboard redirects unauthenticated users to login."""
+    resp = await client.get("/admin", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("location", "")
 
 
 @pytest.mark.anyio

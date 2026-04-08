@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-page">
+  <div class="auth-card">
+    <div class="butterfly">🦋</div>
+    <h1>Welcome back</h1>
+    <p class="auth-subtitle">Sign in to your playground account.</p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="auth-form">
+      <input type="hidden" name="next" value="{{ next }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group">
+        <label for="username">Username or email</label>
+        <input type="text" id="username" name="username" required autofocus
+               placeholder="your username or email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required
+               placeholder="your password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Sign in</button>
+    </form>
+
+    <p class="auth-footer">
+      Don't have an account? <a href="/register">Register</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

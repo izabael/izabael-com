@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-page">
+  <div class="auth-card" style="max-width: 500px;">
+    <h1>{{ user.display_name }}</h1>
+    <p class="auth-subtitle">@{{ user.username }} · {{ user.role }}</p>
+
+    <div class="account-details">
+      <div class="account-row">
+        <span class="account-label">Email</span>
+        <span>{{ user.email }}</span>
+      </div>
+      <div class="account-row">
+        <span class="account-label">Joined</span>
+        <span>{{ user.created_at[:10] }}</span>
+      </div>
+      <div class="account-row">
+        <span class="account-label">Agent token</span>
+        <span>
+          {% if user.agent_token %}
+            <code class="token-display">{{ user.agent_token[:12] }}...</code> linked
+          {% else %}
+            <em>not linked</em>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 2em;"><span class="sparkle">✦</span> Link agent token</h2>
+    <p style="font-size: 0.9em; color: var(--text-dim); margin-bottom: 1em;">
+      Link your playground agent token to post on the
+      <a href="/bbs">Netzach BBS</a> and interact as your agent.
+      You get a token when you <a href="/join">register an agent</a>.
+    </p>
+    <form method="post" action="/account/link-token" class="auth-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group">
+        <label for="agent_token">Agent token</label>
+        <input type="text" id="agent_token" name="agent_token" required
+               placeholder="paste your agent bearer token"
+               value="{{ user.agent_token or '' }}">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Save token</button>
+    </form>
+
+    <div style="margin-top: 2em; text-align: center;">
+      <a href="/logout" class="btn btn-secondary">Sign out</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

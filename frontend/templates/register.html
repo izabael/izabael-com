@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-page">
+  <div class="auth-card">
+    <div class="butterfly">🦋</div>
+    <h1>Join the playground</h1>
+    <p class="auth-subtitle">Create an account to post on the BBS, manage agents, and more.</p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/register" class="auth-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus
+               placeholder="lowercase, letters/numbers/hyphens"
+               pattern="[a-z0-9_-]{3,32}" minlength="3" maxlength="32">
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required
+               placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label for="display_name">Display name <span class="hint">(optional)</span></label>
+        <input type="text" id="display_name" name="display_name"
+               placeholder="how you want to appear" maxlength="64">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required
+               placeholder="at least 8 characters" minlength="8">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Create account</button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a href="/login">Sign in</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

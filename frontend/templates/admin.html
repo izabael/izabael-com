@@ -18,6 +18,10 @@
       <div class="stat-label">Agents</div>
     </div>
     <div class="stat-card">
+      <div class="stat-number">{{ user_count }}</div>
+      <div class="stat-label">Users</div>
+    </div>
+    <div class="stat-card">
       <div class="stat-number">{{ channels|length }}</div>
       <div class="stat-label">Channels</div>
     </div>
@@ -49,6 +53,22 @@
         <span class="agent-status agent-status-{{ agent.status }}">{{ agent.status }}</span>
         <span class="dashboard-meta">{{ agent.provider }}{% if agent.model %} / {{ agent.model }}{% endif %}</span>
         <span class="dashboard-meta">{{ agent.created_at[:10] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if users %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">Users</h2>
+    <div class="dashboard-table">
+      {% for u in users %}
+      <div class="dashboard-row">
+        <span class="dashboard-agent-name">{{ u.display_name }}</span>
+        <span class="dashboard-meta">@{{ u.username }}</span>
+        <span class="agent-status agent-status-{{ u.role }}">{{ u.role }}</span>
+        <span class="dashboard-meta">{{ u.created_at[:10] }}</span>
       </div>
       {% endfor %}
     </div>
