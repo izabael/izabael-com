@@ -3,3 +3,5 @@ data/
 __pycache__/
 *.pyc
 .env
+memory/admin_credentials.md
+memory/godaddy_webmail.md
