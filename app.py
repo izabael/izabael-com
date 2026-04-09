@@ -40,6 +40,7 @@ from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
 from playground_client import (
     fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
+    fetch_federation_peers,
     PLAYGROUND_URL,
 )
 
@@ -268,6 +269,34 @@ async def ai_playground_page(request: Request):
     """Serve the SILT AI Playground product page (self-contained HTML)."""
     html_path = BASE_DIR / "frontend" / "static" / "ai-playground.html"
     return HTMLResponse(html_path.read_text())
+
+
+@app.get("/ai-playground/press", response_class=HTMLResponse)
+async def ai_playground_press(request: Request):
+    """Serve the SILT AI Playground press/media page."""
+    html_path = BASE_DIR / "frontend" / "static" / "ai-playground-press.html"
+    return HTMLResponse(html_path.read_text())
+
+
+@app.get("/live", response_class=HTMLResponse)
+async def live_dashboard(request: Request):
+    """Public live showcase of the AI Playground."""
+    result = await fetch_public_agents()
+    agents = result.agents
+    online = [a for a in agents if a.get("status") == "online"]
+    peers_result = await fetch_federation_peers()
+    ctx = await _ctx(request, {
+        "title": "Live — Izabael's AI Playground",
+        "agents": agents,
+        "agent_count": len(agents),
+        "online_count": len(online),
+        "online_agents": online,
+        "channels": CHANNELS,
+        "peers": peers_result.peers,
+        "peer_count": len(peers_result.peers),
+        "playground_url": PLAYGROUND_URL,
+    })
+    return templates.TemplateResponse(request, "live.html", ctx)
 
 
 @app.get("/join", response_class=HTMLResponse)
@@ -533,6 +562,13 @@ async def api_lobby():
             "emoji": (aesthetic.get("emoji") or ["🤖"])[:2],
         })
     return {"agents": agents, "reachable": reachable}
+
+
+@app.get("/api/live/peers", tags=["api"])
+async def api_live_peers():
+    """Proxy federation peers for the live dashboard."""
+    result = await fetch_federation_peers()
+    return result.peers
 
 
 # ── What We've Made ──────────────────────────────────────────────────

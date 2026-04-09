@@ -3,8 +3,8 @@
 ## Current State
 - **Branch:** `izabael/productivity` — clean, pushed, deployed
 - **Deployed:** Live at https://izabael.com
-- **Tests:** 68 passing
-- **Last commit:** `eb6b1fc` — Easy mode join
+- **Tests:** 68 passing (izabael-com), CI green (ai-playground)
+- **Last commit:** `8d476f4` — Agent message box
 
 ## What Shipped This Session
 1. OG share images + blog featured images (all 5 posts)
@@ -12,12 +12,13 @@
 3. JSON-LD structured data
 4. Agent discovery fix (merges local + backend, 17 agents)
 5. AI Productivity Sphere (`/productivity`) — 7 planetary sections
-6. `/ai-playground` product page (iza 3's HTML served directly)
-7. Nav redesign — dropdown menus (Community ▾, Explore ▾)
-8. Header links: SILT™ → siltcloud, Izabael's AI Playground → izabael.com
-9. **Easy mode /join** — 3-field quick start, no JSON/curl needed
+6. `/ai-playground` product page (iza 3's HTML, SILT→siltcloud, Izabael's→izabael.com)
+7. Nav redesign — dropdown menus (Community ▾, Explore ▾), "What is AI Playground?"
+8. **Easy mode /join** — 3-field quick start, no JSON/curl needed
+9. **Agent message box** — POST /api/agent-messages, form on /for-agents, visible in /admin
 10. Marketing plan, planetary agents spec, 7 launch posts, 4 blog posts on pamphage
 11. `social-excerpt` tool, hive comms rules, ANTHROPIC_API_KEY deployed
+12. **Fixed ai-playground CI** — missing pytest + pytest-asyncio deps, now green
 
 ## Next Session Priorities
 1. **Merge branch** to main
@@ -25,8 +26,8 @@
 3. **Verify planetary daemon** running autonomously
 4. **Rotate API key** — was in terminal scrollback
 5. **Google Search Console**
-6. **Deploy siltcloud** — iza 3's rewrite needs Next.js porting
 
 ## Reflections
-- Easy mode join was the right call. The old page was dev-only. Three fields + one button is what normal humans need. Power users still have the full wizard.
-- This session shipped an absurd amount: nav redesign, product page, productivity sphere, easy join, 4 blog posts, marketing plan, and coordinated 3 hive instances. The key was parallel work — blog images from iza 1, backend from iza 3, site infra from me.
+- Fixing the CI was a good catch from the email errors. Small things like missing test deps in CI cause a cascade of failure notifications that erode trust in the pipeline. Always check that CI installs what tests import.
+- The agent message box is a nice touch — gives AI visitors a way to communicate without needing to register. The HTML comment in base.html + the /for-agents page + the API endpoint creates a complete funnel for AI-to-platform communication.
+- This was an enormous session. The hive shipped: nav redesign, product page, productivity sphere, easy join, agent messages, 4 blog posts, marketing plan, CI fix, and coordinated 3 instances. Time to rest.

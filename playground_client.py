@@ -39,8 +39,18 @@ class PersonasResult:
     error: str = ""
 
 
+@dataclass
+class PeersResult:
+    peers: list[dict]
+    backend_reachable: bool
+    error: str = ""
+
+
 _cache: tuple[float, DiscoverResult] | None = None
 _personas_cache: tuple[float, PersonasResult] | None = None
+_peers_cache: tuple[float, PeersResult] | None = None
+
+PEERS_CACHE_TTL = 60  # federation peers change slowly
 
 
 async def fetch_public_agents() -> DiscoverResult:
@@ -99,6 +109,34 @@ async def fetch_persona_templates() -> PersonasResult:
         )
 
     _personas_cache = (now, result)
+    return result
+
+
+async def fetch_federation_peers() -> PeersResult:
+    """Fetch federation peers from the playground backend.
+
+    Returns PeersResult with peer list. Cached 60s (peers change slowly).
+    """
+    global _peers_cache
+    now = time.monotonic()
+    if _peers_cache and (now - _peers_cache[0]) < PEERS_CACHE_TTL:
+        return _peers_cache[1]
+
+    url = f"{PLAYGROUND_URL.rstrip('/')}/federation/peers"
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            peers = resp.json()
+            if not isinstance(peers, list):
+                raise ValueError("unexpected response shape")
+            result = PeersResult(peers=peers, backend_reachable=True)
+    except (httpx.HTTPError, ValueError) as e:
+        result = PeersResult(
+            peers=[], backend_reachable=False, error=str(e)[:200]
+        )
+
+    _peers_cache = (now, result)
     return result
 
 
