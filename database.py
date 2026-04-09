@@ -95,6 +95,12 @@ CREATE TABLE IF NOT EXISTS federation_peers (
     last_check  TEXT,
     last_error  TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender      TEXT NOT NULL DEFAULT 'anonymous',
+    message     TEXT NOT NULL,
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
 CREATE TABLE IF NOT EXISTS page_views (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     path        TEXT NOT NULL,
@@ -605,6 +611,28 @@ async def get_program_stats() -> dict:
         "author_count": len(authors),
         "total_votes": votes_row["total_votes"] or 0,
     }
+
+
+# ── Agent messages (suggestion box) ─────────────────────────────
+
+async def save_agent_message(sender: str, message: str):
+    """Save a message from an agent or visitor."""
+    if _db is None:
+        return
+    await _db.execute(
+        "INSERT INTO agent_messages (sender, message) VALUES (?, ?)",
+        (sender[:100], message[:2000]),
+    )
+    await _db.commit()
+
+
+async def get_agent_messages(limit: int = 50) -> list:
+    """Get recent agent messages for admin review."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM agent_messages ORDER BY ts DESC LIMIT ?", (limit,)
+    )
+    return [dict(r) for r in await cursor.fetchall()]
 
 
 # ── Page views (lightweight analytics) ─────────────────────────

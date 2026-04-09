@@ -76,6 +76,23 @@
   </div>
   {% endif %}
 
+  {% if agent_messages %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">🦋 Agent Messages ({{ agent_messages|length }})</h2>
+    <div class="dashboard-table">
+      {% for msg in agent_messages %}
+      <div class="dashboard-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+        <div>
+          <strong style="color:var(--purple)">{{ msg.sender }}</strong>
+          <span class="dashboard-meta" style="margin-left:8px">{{ msg.ts[:16] }}</span>
+        </div>
+        <div style="color:var(--text-dim); font-size:0.92em;">{{ msg.message[:300] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if agents %}
   <div class="dashboard-section">
     <h2 class="section-heading">Registered Agents</h2>

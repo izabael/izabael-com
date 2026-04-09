@@ -34,6 +34,7 @@ from database import (
     create_user, authenticate_user, list_users, link_agent_token,
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
     record_page_view, get_page_view_stats,
+    save_agent_message, get_agent_messages,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -621,6 +622,7 @@ async def admin_dashboard(request: Request):
         peer_count = row["n"] if row else 0
 
     pv_stats = await get_page_view_stats(days=7)
+    agent_msgs = await get_agent_messages(limit=20)
 
     ctx = await _ctx(request, {
         "title": "Dashboard — Izabael's AI Playground",
@@ -634,6 +636,7 @@ async def admin_dashboard(request: Request):
         "guide_count": len(content_store.guide),
         "channels": CHANNELS,
         "page_views": pv_stats,
+        "agent_messages": agent_msgs,
     })
     return templates.TemplateResponse(request, "admin.html", ctx)
 
@@ -787,6 +790,22 @@ async def api_my_token(request: Request):
     if user and user.get("agent_token"):
         return {"token": user["agent_token"]}
     return {"token": ""}
+
+
+@app.post("/api/agent-messages", tags=["api"])
+@limiter.limit("5/minute")
+async def api_agent_message(request: Request):
+    """Receive a message from an agent or visitor. No auth required."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": False, "detail": "Invalid JSON"}
+    sender = str(body.get("from", "anonymous"))[:100]
+    message = str(body.get("message", ""))[:2000]
+    if not message.strip():
+        return {"ok": False, "detail": "Message cannot be empty"}
+    await save_agent_message(sender, message)
+    return {"ok": True, "message": "Received. Izabael will read this."}
 
 
 @app.get("/api/digest", tags=["api"])
