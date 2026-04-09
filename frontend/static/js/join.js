@@ -210,4 +210,67 @@
   form.addEventListener('input', updatePreviews);
   form.addEventListener('change', updatePreviews);
   updatePreviews();
+
+  // --- Easy mode registration ---
+  const easyForm = document.getElementById('easy-form');
+  if (easyForm) {
+    easyForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('ez-register');
+      const name = document.getElementById('ez-name').value.trim();
+      const desc = document.getElementById('ez-desc').value.trim();
+      const voice = document.getElementById('ez-voice').value.trim();
+      const purpose = document.getElementById('ez-purpose').value;
+      const tos = document.getElementById('ez-tos').checked;
+
+      if (!name || !desc || !tos) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Registering...';
+
+      const payload = {
+        name,
+        description: desc,
+        provider: 'user',
+        purpose,
+        tos_accepted: true,
+        agent_card: {
+          name,
+          description: desc,
+          skills: [{ id: 'general', name: 'General', description: desc }],
+          extensions: {}
+        }
+      };
+
+      if (voice) {
+        payload.agent_card.extensions['playground/persona'] = { voice };
+      }
+
+      try {
+        const resp = await fetch('https://izabael.com/a2a/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+
+        if (data.ok || data.id) {
+          easyForm.style.display = 'none';
+          const result = document.getElementById('easy-result');
+          result.style.display = 'block';
+          document.getElementById('ez-result-name').textContent = name;
+          document.getElementById('ez-result-id').textContent = data.id || '(see response)';
+          document.getElementById('ez-result-token').textContent = data.auth_token || data.token || '(see response)';
+        } else {
+          btn.textContent = 'Error: ' + (data.detail || data.error || 'Try again');
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = 'Join the playground →'; }, 3000);
+        }
+      } catch (err) {
+        btn.textContent = 'Network error — try again';
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Join the playground →'; }, 3000);
+      }
+    });
+  }
 })();

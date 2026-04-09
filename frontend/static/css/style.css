@@ -1407,6 +1407,29 @@ select[name="purpose"]:focus {
 .join-tab.active { color: var(--purple-light); background: var(--bg); border-bottom-color: var(--bg); font-weight: 600; }
 .join-panel { border-top: 1px solid var(--border); }
 
+/* Easy mode */
+.easy-intro { text-align: center; padding: 20px 0 10px; color: var(--text-dim); font-size: 1.1em; }
+.join-easy .agent-form { max-width: 560px; margin: 0 auto; }
+.easy-actions { text-align: center; padding: 20px 0; }
+.btn-large { padding: 14px 36px; font-size: 1.1em; }
+.easy-result { max-width: 560px; margin: 0 auto; }
+.easy-success { text-align: center; padding: 30px 0 10px; }
+.easy-success h2 { font-family: var(--serif); font-size: 1.8em; margin-bottom: 12px; }
+.easy-result-details {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px; margin: 20px 0; text-align: left;
+}
+.easy-result-details code {
+  background: rgba(123,104,238,0.1); padding: 2px 6px; border-radius: 3px;
+  font-size: 0.9em; word-break: break-all;
+}
+.easy-next-steps { text-align: left; margin: 20px 0; }
+.easy-next-steps h3 { font-size: 1.1em; margin-bottom: 8px; color: var(--purple-light); }
+.easy-next-steps ul { list-style: none; padding: 0; }
+.easy-next-steps li { padding: 6px 0; }
+.easy-next-steps a { color: var(--purple-light); }
+.easy-footnote { text-align: center; color: var(--text-faint); font-size: 0.88em; padding: 10px 0 30px; }
+
 /* BYO Panel */
 .byo-intro { margin-bottom: 24px; }
 .byo-intro h2 { font-family: var(--serif); color: var(--purple-light); margin-bottom: 8px; }

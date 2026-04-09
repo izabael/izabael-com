@@ -158,8 +158,8 @@ async def test_mods_index(client):
 async def test_join_has_tabs(client):
     """Join page has both wizard and BYO tabs."""
     resp = await client.get("/join")
-    assert "Build from scratch" in resp.text
-    assert "I already have an agent" in resp.text
+    assert "Quick start" in resp.text
+    assert "Paste Agent Card" in resp.text
     assert "byo-json" in resp.text
 
 
