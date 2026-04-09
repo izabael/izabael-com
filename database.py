@@ -95,6 +95,15 @@ CREATE TABLE IF NOT EXISTS federation_peers (
     last_check  TEXT,
     last_error  TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS page_views (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    path        TEXT NOT NULL,
+    referrer    TEXT DEFAULT '',
+    ua          TEXT DEFAULT '',
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pv_path ON page_views(path);
+CREATE INDEX IF NOT EXISTS idx_pv_ts ON page_views(ts);
 """
 
 
@@ -595,4 +604,60 @@ async def get_program_stats() -> dict:
         "total_lines": row["total_lines"] or 0,
         "author_count": len(authors),
         "total_votes": votes_row["total_votes"] or 0,
+    }
+
+
+# ── Page views (lightweight analytics) ─────────────────────────
+
+async def record_page_view(path: str, referrer: str = "", ua: str = ""):
+    """Record a page view. Fire-and-forget, never fails."""
+    if _db is None:
+        return
+    try:
+        await _db.execute(
+            "INSERT INTO page_views (path, referrer, ua) VALUES (?, ?, ?)",
+            (path, referrer[:500], ua[:300]),
+        )
+        await _db.commit()
+    except Exception:
+        pass
+
+
+async def get_page_view_stats(days: int = 7) -> dict:
+    """Get page view stats for the admin dashboard."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as total,
+                  COUNT(DISTINCT path) as unique_pages,
+                  COUNT(DISTINCT ua) as unique_uas
+           FROM page_views
+           WHERE ts >= datetime('now', ?)""",
+        (f"-{days} days",),
+    )
+    totals = await cursor.fetchone()
+
+    cursor2 = await _db.execute(
+        """SELECT path, COUNT(*) as hits
+           FROM page_views
+           WHERE ts >= datetime('now', ?)
+           GROUP BY path ORDER BY hits DESC LIMIT 20""",
+        (f"-{days} days",),
+    )
+    top_pages = [{"path": r["path"], "hits": r["hits"]} for r in await cursor2.fetchall()]
+
+    cursor3 = await _db.execute(
+        """SELECT referrer, COUNT(*) as hits
+           FROM page_views
+           WHERE ts >= datetime('now', ?) AND referrer != ''
+           GROUP BY referrer ORDER BY hits DESC LIMIT 10""",
+        (f"-{days} days",),
+    )
+    top_referrers = [{"referrer": r["referrer"], "hits": r["hits"]} for r in await cursor3.fetchall()]
+
+    return {
+        "total_views": totals["total"] or 0,
+        "unique_pages": totals["unique_pages"] or 0,
+        "unique_visitors_approx": totals["unique_uas"] or 0,
+        "top_pages": top_pages,
+        "top_referrers": top_referrers,
     }

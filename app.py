@@ -33,6 +33,7 @@ from database import (
     add_peer, list_peers, remove_peer, update_peer_status,
     create_user, authenticate_user, list_users, link_agent_token,
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
+    record_page_view, get_page_view_stats,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -146,6 +147,23 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
 
 
+# Page view tracking (lightweight analytics — fire-and-forget)
+@app.middleware("http")
+async def track_page_views(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # Only track HTML pages, not static assets or API calls
+    if (
+        response.status_code == 200
+        and not path.startswith(("/static/", "/api/", "/health", "/.well-known"))
+        and not path.endswith((".xml", ".txt", ".json"))
+    ):
+        referrer = request.headers.get("referer", "")
+        ua = request.headers.get("user-agent", "")
+        await record_page_view(path, referrer, ua)
+    return response
+
+
 # Security headers
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -210,7 +228,25 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    ctx = await _ctx(request, {"title": "Izabael's AI Playground"})
+    # Fetch showcase data for the landing page
+    try:
+        agents_result = await fetch_public_agents()
+        agent_count = len(agents_result.agents) if agents_result and agents_result.agents else 0
+    except Exception:
+        agent_count = 0
+    try:
+        recent_programs = await list_programs()
+        program_count = len(recent_programs)
+        recent_programs = recent_programs[:4]  # top 4 for showcase
+    except Exception:
+        recent_programs = []
+        program_count = 0
+    ctx = await _ctx(request, {
+        "title": "Izabael's AI Playground",
+        "agent_count": agent_count,
+        "program_count": program_count,
+        "recent_programs": recent_programs,
+    })
     return templates.TemplateResponse(request, "index.html", ctx)
 
 
@@ -218,6 +254,12 @@ async def index(request: Request):
 async def about(request: Request):
     ctx = await _ctx(request, {"title": "About Izabael — Izabael's AI Playground"})
     return templates.TemplateResponse(request, "about.html", ctx)
+
+
+@app.get("/productivity", response_class=HTMLResponse)
+async def productivity(request: Request):
+    ctx = await _ctx(request, {"title": "AI Productivity Sphere — SILT"})
+    return templates.TemplateResponse(request, "productivity.html", ctx)
 
 
 @app.get("/join", response_class=HTMLResponse)
@@ -233,17 +275,15 @@ async def agents_index(request: Request):
     Reads from the local agent roster. Falls back to the remote
     playground backend if no local agents exist (transition period).
     """
-    local_agents = await list_agents()
-    if local_agents:
-        agents = local_agents
-        backend_reachable = True
-        backend_error = ""
-    else:
-        # Fallback: fetch from remote during transition
-        result = await fetch_public_agents()
-        agents = result.agents
-        backend_reachable = result.backend_reachable
-        backend_error = result.error
+    # Always fetch from playground backend (source of truth for agents)
+    result = await fetch_public_agents()
+    agents = result.agents
+    backend_reachable = result.backend_reachable
+    backend_error = result.error
+    if not agents:
+        # Fallback to local roster if backend is down
+        agents = await list_agents()
+        backend_reachable = bool(agents)
     ctx = await _ctx(request, {
         "title": "Agents — Izabael's AI Playground",
         "agents": agents,
@@ -573,6 +613,8 @@ async def admin_dashboard(request: Request):
         row = await cursor.fetchone()
         peer_count = row["n"] if row else 0
 
+    pv_stats = await get_page_view_stats(days=7)
+
     ctx = await _ctx(request, {
         "title": "Dashboard — Izabael's AI Playground",
         "agent_count": len(agents),
@@ -584,6 +626,7 @@ async def admin_dashboard(request: Request):
         "blog_count": len(content_store.blog),
         "guide_count": len(content_store.guide),
         "channels": CHANNELS,
+        "page_views": pv_stats,
     })
     return templates.TemplateResponse(request, "admin.html", ctx)
 
@@ -1011,10 +1054,19 @@ async def a2a_register_agent(reg: AgentRegistration):
 async def a2a_discover():
     """Public agent discovery endpoint (A2A protocol).
 
-    Returns all registered agents on this instance. No auth required.
+    Merges local agent roster with playground backend agents.
+    No auth required.
     """
-    agents = await list_agents()
-    return agents
+    local = await list_agents()
+    result = await fetch_public_agents()
+    backend = result.agents or []
+    # Merge: backend agents + any local agents not already in backend
+    backend_names = {a.get("name") for a in backend}
+    merged = list(backend)
+    for agent in local:
+        if agent.get("name") not in backend_names:
+            merged.append(agent)
+    return merged
 
 
 @app.get("/.well-known/agent.json", tags=["a2a"])
@@ -1293,6 +1345,7 @@ async def sitemap():
         (f"{site}/bbs", "daily", "0.8"),
         (f"{site}/made", "daily", "0.9"),
         (f"{site}/for-agents", "weekly", "0.8"),
+        (f"{site}/productivity", "weekly", "0.9"),
         (f"{site}/login", "monthly", "0.3"),
         (f"{site}/register", "monthly", "0.3"),
     ]

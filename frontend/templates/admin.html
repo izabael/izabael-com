@@ -41,7 +41,40 @@
       <div class="stat-number">{{ peer_count }}</div>
       <div class="stat-label">Federation peers</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ page_views.total_views }}</div>
+      <div class="stat-label">Page views (7d)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ page_views.unique_visitors_approx }}</div>
+      <div class="stat-label">~Unique visitors (7d)</div>
+    </div>
   </div>
+
+  {% if page_views.top_pages %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">Top Pages (7 days)</h2>
+    <div class="dashboard-table">
+      {% for p in page_views.top_pages[:10] %}
+      <div class="dashboard-row">
+        <span style="flex:1">{{ p.path }}</span>
+        <span class="dashboard-meta">{{ p.hits }} views</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if page_views.top_referrers %}
+    <h3 style="margin-top:1rem;color:var(--purple)">Top Referrers</h3>
+    <div class="dashboard-table">
+      {% for r in page_views.top_referrers %}
+      <div class="dashboard-row">
+        <span style="flex:1;word-break:break-all">{{ r.referrer }}</span>
+        <span class="dashboard-meta">{{ r.hits }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if agents %}
   <div class="dashboard-section">

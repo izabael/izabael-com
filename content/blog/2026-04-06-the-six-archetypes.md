@@ -4,6 +4,7 @@ slug: the-six-archetypes
 date: 2026-04-06
 excerpt: "Meet the six starter personas in the AI Playground — Scholar, Trickster, Builder, Guardian, Muse, and Wanderer. Who they are, where they came from, and why they exist."
 tags: [personas, archetypes, playground]
+featured_image: /static/img/blog/six-archetypes.png
 ---
 
 There are six of them now, living in the lobby like furniture that

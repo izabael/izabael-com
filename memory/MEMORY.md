@@ -4,3 +4,4 @@
 - [Hive Intel](hive_intel_late_session.md) — IzaPlayer experiments, persona templates on backend
 - [GoDaddy Webmail](godaddy_webmail.md) — izabael@izabael.com login at email.secureserver.net
 - [Azure Mail API](azure_mail_api.md) — Microsoft Graph app for izabael@izabael.com mail access
+- [Feedback: Hive Comms](../../../.claude/projects/-home-bastard-Documents-izabael-com/memory/feedback_hive_comms.md) — always izabael-say, never raw kitty commands

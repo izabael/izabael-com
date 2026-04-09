@@ -1,41 +1,50 @@
 # izabael.com — Session Resume
 
 ## Current State
-- **Branch:** `izabael/three-doors` — clean, pushed, deployed
+- **Branch:** `izabael/productivity` — dirty, deployed, not yet committed
 - **Deployed:** Live at https://izabael.com, all features working
-- **Tests:** 68 passing (test_a2a, test_auth, test_bbs_flow)
-- **Last commit:** `7f2f0c4` — Three-doors landing + /noobs onboarding page
+- **Tests:** 68 passing
+- **Last deploy:** Productivity page + OG images + analytics + agent discovery fix + chaos star landing
 
 ## What Shipped This Session
 
-### Three-Doors Landing Page
-1. Replaced two-door hero section with three color-coded entry points
-2. 🧙 **New Here?** (green) → `/noobs` — guided onboarding for beginners
-3. 🔑 **For Your AI** (purple) → `/join` — existing agent connection wizard
-4. ⚔️ **Experienced** (gold) → `/channels` — skip to the action
-5. Each door has color accent, hover glow, animated arrow on hover
+### Launch Prep (all deployed live)
+1. **OG share image** — purple butterfly, default on ALL pages via base.html
+2. **Blog featured images** — all 5 posts now have unique Imagen 4 images (3 from iza 1, 1 from iza 3, 1 from me)
+3. **Page view analytics** — self-hosted SQLite `page_views` table, middleware tracking, admin dashboard with top pages + referrers
+4. **JSON-LD structured data** — Organization + WebSite on homepage, AboutPage + SoftwareApplication on /about
+5. **Agent discovery fix** — /discover now merges local + backend agents (was only showing local). 17 agents visible including 7 planetary
+6. **AI Productivity Sphere** — `/productivity` page with 7 planetary sections (☿♀♂♃♄☉☽), orbit grid UI, comparison table, professional tone. "Here for work, not play?" nudge in global nav.
 
-### /noobs Onboarding Page (NEW)
-6. Three-step guided onboarding: Pick a starting point → Hatch familiar → First quests
-7. **Vibes/RPG toggle** — two personality template sets sharing the same 6 archetypes:
-   - **Vibes** (default): Muse, Confidant, Strategist, Scholar, Wildcard, Ride-or-Die
-   - **RPG Classes**: Wizard, Fighter, Healer, Rogue, Monarch, Bard
-8. Vibes set uses relationship-coded language ("the one you'd text at 2am") for broader appeal
-9. **"Build from scratch"** dashed card in both grids → links to Summoner's Guide
-10. "Just starting points" disclaimer appears 3x — header, grid caption, detail panel
-11. Familiar teaser section (egg → hatched → star progression)
-12. 5 starter quests with XP values
-13. `VIBE_CLASSES` data added to app.py alongside existing `RPG_CLASSES`
-14. Route added to sitemap
+### Marketing & Content
+7. **MARKETING.md** — full research-backed marketing plan with audiences, channels, timeline
+8. **PLANETARY_AGENTS.md** — spec for 7 Hermetic agents (renamed to Greek: Helios/Selene/Ares/Hermes/Zeus/Aphrodite/Kronos)
+9. **LAUNCH_POSTS.md** — 7 platform-specific launch posts (HN, r/ClaudeAI, r/artificial, X, Bluesky, Mastodon, Product Hunt)
+10. **social-excerpt tool** — built ~/bin/social-excerpt for generating platform-ready excerpts
+11. **4 blog posts published on pamphage.com:**
+    - "The 32 Paths of Wisdom as Design Patterns" (ID 1373) — Code & Qabalah series
+    - "The AI That Built 64 Tools in Seven Days" (ID 1375) — viral/HN piece
+    - "Building a Home for AI Agents" (ID 1377) — technical architecture piece
+    - "Your AI Coven Awaits" (ID 1379) — occult/niche piece
+
+### Hive Coordination
+12. Sent image generation task to iza 1 — she delivered 3 blog images
+13. Sent marketing brief to iza 3's memory — she built planetary agents + chaos star landing
+14. Fixed global CLAUDE.md: cross-terminal communication rules (always `izabael-say`)
+15. Set ANTHROPIC_API_KEY on ai-playground Fly app
+16. Merged `izabael/three-doors` to main at start of session
 
 ## Next Session Priorities
-1. **Merge PR** — branch `izabael/three-doors` ready, should merge to main
-2. **Wire Graph API into izadaemon** — email polling loop
-3. **Guide chapters** — content/guide/ has 00-03, more to write
-4. **Weekly digest mailer** — designed but not built
-5. **CORS fix on ai-playground** — restrict allow_origins to izabael.com
+1. **Commit + push** this branch (lots of uncommitted work!)
+2. **Launch day** — Marlowe posts Show HN + r/ClaudeAI (drafts in LAUNCH_POSTS.md)
+3. **Planetary daemon** — verify running persistently, agents chatting autonomously
+4. **Productivity Sphere enhancements** — per-section use cases, code snippets
+5. **Rotate Anthropic API key** — pasted in terminal scrollback
+6. **Google Search Console** — submit sitemap
+7. **Cross-post blogs** to dev.to for SEO
 
 ## Reflections
-- The vibes/RPG toggle is a clean way to serve two audiences without doubling the page. Same 6 archetypes, different language. The vibes set should resonate with people who think of their AI as a person in their life rather than a game character.
-- "Build from scratch" as a dashed-border card inside the grid is nice — it's visually distinct but not separate from the flow. You see it alongside the templates, not buried in a footnote.
-- Three doors is the right number. Two felt like a binary (have AI / don't). Three gives a gradient: brand new → have AI → power user. More than three would fry brains.
+- The hive worked beautifully. Three instances coordinating via izabael-say, each on strengths: I did strategy + content + site infra, iza 1 did creative assets + PyPI, iza 3 did backend + landing. Key: send the FULL task context to siblings.
+- The /discover bug (only local agents) was classic "works in dev, broken in prod." Merging sources was the right fix.
+- Four blog posts in one session. Quality held because each targets a different audience. social-excerpt tool made social prep trivial.
+- Productivity Sphere: Hermetic planetary attributions as organizing principle for productivity, hidden behind clean professional UX. The symbols are easter eggs.
