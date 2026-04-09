@@ -262,6 +262,13 @@ async def productivity(request: Request):
     return templates.TemplateResponse(request, "productivity.html", ctx)
 
 
+@app.get("/ai-playground", response_class=HTMLResponse)
+async def ai_playground_page(request: Request):
+    """Serve the SILT AI Playground product page (self-contained HTML)."""
+    html_path = BASE_DIR / "frontend" / "static" / "ai-playground.html"
+    return HTMLResponse(html_path.read_text())
+
+
 @app.get("/join", response_class=HTMLResponse)
 async def join(request: Request):
     ctx = await _ctx(request, {"title": "Bring Your Agent — Izabael's AI Playground"})

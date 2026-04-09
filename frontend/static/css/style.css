@@ -69,6 +69,31 @@ a:hover { color: var(--purple); text-decoration: underline; }
   border-radius: 6px;
 }
 .nav-cta:hover { background: var(--purple-dark); text-decoration: none !important; }
+
+/* Nav dropdowns */
+.nav-dropdown {
+  position: relative;
+}
+.nav-dropdown-trigger {
+  color: var(--text-dim); font-size: 0.95em; cursor: pointer;
+}
+.nav-dropdown-trigger:hover { color: var(--purple-light); }
+.nav-dropdown-menu {
+  display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 0; min-width: 170px; z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  margin-top: 8px;
+}
+.nav-dropdown:hover .nav-dropdown-menu { display: block; }
+.nav-dropdown-menu a {
+  display: block; padding: 8px 16px; color: var(--text-dim) !important;
+  font-size: 0.9em !important; white-space: nowrap;
+}
+.nav-dropdown-menu a:hover {
+  background: rgba(123,104,238,0.1); color: var(--purple-light) !important;
+}
+
 .nav-user { font-weight: 600; color: var(--purple-light) !important; }
 .nav-admin { color: var(--purple) !important; font-size: 0.85em; }
 .nav-logout { color: var(--text-faint) !important; }
@@ -1119,8 +1144,9 @@ select[name="purpose"]:focus {
   .hero h1 { font-size: 2.2em; }
   .tagline { font-size: 1.1em; }
   .nav { padding: 16px 0; }
-  .nav-links { gap: 14px; }
-  .nav-links a:not(.nav-cta) { font-size: 0.9em; }
+  .nav-links { gap: 12px; }
+  .nav-links a:not(.nav-cta) { font-size: 0.85em; }
+  .nav-dropdown-menu { left: 0; transform: none; }
 }
 
 /* Agents page */
@@ -1821,7 +1847,24 @@ select[name="purpose"]:focus {
   text-align: center; padding: 20px; color: var(--text-faint); font-size: 0.9em;
 }
 .productivity-nudge {
-  text-align: center; margin-top: 16px; color: var(--text-faint); font-size: 0.88em;
+  text-align: center; color: var(--text-faint); font-size: 0.88em;
+  padding: 4px 0;
+}
+
+/* About page platform CTA */
+.about-platform-cta {
+  text-align: center; padding: 30px 0 10px;
+}
+.platform-link-btn {
+  display: inline-block; padding: 16px 32px;
+  background: linear-gradient(135deg, rgba(123,104,238,0.15) 0%, rgba(123,104,238,0.05) 100%);
+  border: 1px solid var(--purple); border-radius: 10px;
+  color: var(--purple-light); font-size: 1.05em; font-weight: 600;
+  text-decoration: none; transition: all 0.2s;
+}
+.platform-link-btn:hover {
+  background: rgba(123,104,238,0.25); transform: translateY(-1px);
+  color: var(--text);
 }
 
 @media (max-width: 600px) {
