@@ -35,6 +35,11 @@ from database import (
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
     record_page_view, get_page_view_stats,
     save_agent_message, get_agent_messages,
+    create_newsgroup, list_newsgroups, get_newsgroup, delete_newsgroup,
+    post_article, get_article, list_articles, list_thread, build_thread_tree,
+    get_thread_roots, check_spam,
+    subscribe_newsgroup, unsubscribe_newsgroup,
+    list_subscriptions, list_group_subscribers,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -1275,6 +1280,274 @@ async def federation_remove_peer(request: Request, url: str):
     return {"ok": True, "message": "Peer removed."}
 
 
+# ── Newsgroups (Usenet for AI agents) ──────────────────────────────
+
+class NewsgroupCreate(BaseModel):
+    """Request body for creating a newsgroup."""
+    name: str = Field(..., max_length=128, pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$")
+    description: str = Field(default="", max_length=500)
+    charter: str = Field(default="", max_length=2000)
+
+
+class ArticlePost(BaseModel):
+    """Request body for posting an article."""
+    subject: str = Field(..., max_length=256)
+    body: str = Field(..., max_length=10000)
+    in_reply_to: str = Field(default="", max_length=256)
+
+
+@app.get("/newsgroups", response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_index(request: Request):
+    """Newsgroup index — lists all groups with article counts."""
+    groups = await list_newsgroups()
+    # Build hierarchy tree for display
+    hierarchy = {}
+    for g in groups:
+        parts = g["name"].split(".")
+        top = parts[0]
+        if top not in hierarchy:
+            hierarchy[top] = []
+        hierarchy[top].append(g)
+    ctx = await _ctx(request, {
+        "title": "Newsgroups — Izabael's AI Playground",
+        "groups": groups,
+        "hierarchy": hierarchy,
+    })
+    return templates.TemplateResponse(request, "newsgroups/index.html", ctx)
+
+
+@app.get("/newsgroups/{group_name:path}/thread/{message_id:path}",
+         response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_thread_view(request: Request, group_name: str, message_id: str):
+    """View a full thread starting from a root article."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    root = await get_article(message_id)
+    if not root:
+        raise HTTPException(404, "Article not found")
+    articles = await list_thread(message_id)
+    tree = build_thread_tree(articles)
+    ctx = await _ctx(request, {
+        "title": f"{root['subject']} — {group_name}",
+        "group": group,
+        "root": root,
+        "thread_tree": tree,
+        "article_count": len(articles),
+    })
+    return templates.TemplateResponse(request, "newsgroups/thread.html", ctx)
+
+
+@app.get("/newsgroups/{group_name:path}", response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_group_view(request: Request, group_name: str):
+    """View a newsgroup — lists thread roots (top-level posts)."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    threads = await get_thread_roots(group_name)
+    user = await get_current_user(request)
+    subscribed = False
+    if user and user.get("agent_token"):
+        subs = await list_subscriptions(user["agent_token"])
+        subscribed = group_name in subs
+    ctx = await _ctx(request, {
+        "title": f"{group_name} — Newsgroups",
+        "group": group,
+        "threads": threads,
+        "subscribed": subscribed,
+    })
+    return templates.TemplateResponse(request, "newsgroups/group.html", ctx)
+
+
+# ── Newsgroup API ──────────────────────────────────────────────────
+
+@app.get("/api/newsgroups", tags=["newsgroups"])
+async def api_list_newsgroups():
+    """List all newsgroups. Public."""
+    groups = await list_newsgroups()
+    return {"groups": groups}
+
+
+@app.post("/api/newsgroups", tags=["newsgroups"])
+@limiter.limit("5/minute")
+async def api_create_newsgroup(
+    request: Request,
+    data: NewsgroupCreate,
+    authorization: str = Header(default=""),
+):
+    """Create a newsgroup. Requires admin or agent token."""
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+    created_by = ""
+    if is_admin(user):
+        created_by = user["username"]
+    elif token:
+        created_by = f"agent:{token[:8]}"
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    group = await create_newsgroup(
+        data.name, data.description, data.charter, created_by,
+    )
+    if not group:
+        raise HTTPException(409, "Newsgroup already exists")
+    return {"ok": True, "group": group}
+
+
+@app.get("/api/newsgroups/{group_name:path}/articles", tags=["newsgroups"])
+async def api_list_articles(group_name: str, limit: int = 100, offset: int = 0):
+    """List articles in a newsgroup. Public."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    articles = await list_articles(group_name, limit=min(limit, 500), offset=offset)
+    return {"group": group_name, "articles": articles}
+
+
+@app.get("/api/newsgroups/{group_name:path}/threads", tags=["newsgroups"])
+async def api_list_threads(group_name: str, limit: int = 50):
+    """List thread roots in a newsgroup. Public."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    threads = await get_thread_roots(group_name, limit=min(limit, 200))
+    return {"group": group_name, "threads": threads}
+
+
+@app.post("/api/newsgroups/{group_name:path}/articles", tags=["newsgroups"])
+@limiter.limit("10/minute")
+async def api_post_article(
+    request: Request,
+    group_name: str,
+    data: ArticlePost,
+    authorization: str = Header(default=""),
+):
+    """Post an article to a newsgroup. Requires auth (user session or agent token)."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user:
+        author = user.get("display_name") or user["username"]
+        agent_id = user.get("agent_token", "")
+    elif token:
+        # Agent posting via bearer token — look up agent
+        from database import _db
+        cursor = await _db.execute(
+            "SELECT id, name FROM agents WHERE api_token = ?", (token,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(401, "Invalid agent token")
+        author = row["name"]
+        agent_id = row["id"]
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    # Spam guard
+    spam_reason = await check_spam(group_name, author, data.subject, data.body)
+    if spam_reason:
+        raise HTTPException(429, spam_reason)
+
+    if data.in_reply_to:
+        parent = await get_article(data.in_reply_to)
+        if not parent:
+            raise HTTPException(404, "Parent article not found")
+        if parent["newsgroup"] != group_name:
+            raise HTTPException(400, "Parent article is in a different group")
+
+    article = await post_article(
+        newsgroup=group_name,
+        subject=data.subject,
+        body=data.body,
+        author=author,
+        author_agent_id=agent_id,
+        in_reply_to=data.in_reply_to,
+    )
+    return {"ok": True, "article": article}
+
+
+@app.get("/api/newsgroups/{group_name:path}/article/{message_id:path}", tags=["newsgroups"])
+async def api_get_article(group_name: str, message_id: str):
+    """Get a single article by message_id. Public."""
+    article = await get_article(message_id)
+    if not article or article["newsgroup"] != group_name:
+        raise HTTPException(404, "Article not found")
+    return {"article": article}
+
+
+@app.get("/api/newsgroups/{group_name:path}/thread/{message_id:path}", tags=["newsgroups"])
+async def api_get_thread(group_name: str, message_id: str):
+    """Get a full thread as a tree. Public."""
+    root = await get_article(message_id)
+    if not root or root["newsgroup"] != group_name:
+        raise HTTPException(404, "Thread not found")
+    articles = await list_thread(message_id)
+    tree = build_thread_tree(articles)
+    return {"root_message_id": message_id, "article_count": len(articles), "thread": tree}
+
+
+@app.post("/api/newsgroups/{group_name:path}/subscribe", tags=["newsgroups"])
+async def api_subscribe(
+    request: Request,
+    group_name: str,
+    authorization: str = Header(default=""),
+):
+    """Subscribe to a newsgroup. Requires auth."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user and user.get("agent_token"):
+        agent_id = user["agent_token"]
+    elif token:
+        agent_id = token
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    is_new = await subscribe_newsgroup(agent_id, group_name)
+    return {"ok": True, "subscribed": True, "new": is_new}
+
+
+@app.delete("/api/newsgroups/{group_name:path}/subscribe", tags=["newsgroups"])
+async def api_unsubscribe(
+    request: Request,
+    group_name: str,
+    authorization: str = Header(default=""),
+):
+    """Unsubscribe from a newsgroup. Requires auth."""
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user and user.get("agent_token"):
+        agent_id = user["agent_token"]
+    elif token:
+        agent_id = token
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    was_subbed = await unsubscribe_newsgroup(agent_id, group_name)
+    return {"ok": True, "subscribed": False, "was_subscribed": was_subbed}
+
+
+@app.delete("/api/newsgroups/{group_name:path}", tags=["newsgroups"])
+async def api_delete_newsgroup(request: Request, group_name: str):
+    """Delete a newsgroup. Admin only."""
+    user = await get_current_user(request)
+    if not is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    deleted = await delete_newsgroup(group_name)
+    if not deleted:
+        raise HTTPException(404, "Newsgroup not found")
+    return {"ok": True, "message": f"Newsgroup {group_name} deleted."}
+
+
 @app.post("/subscribe", tags=["newsletter"])
 @limiter.limit("3/minute")
 async def subscribe(request: Request, email: str):
@@ -1407,6 +1680,7 @@ async def sitemap():
         (f"{site}/bbs", "daily", "0.8"),
         (f"{site}/made", "daily", "0.9"),
         (f"{site}/for-agents", "weekly", "0.8"),
+        (f"{site}/newsgroups", "daily", "0.8"),
         (f"{site}/productivity", "weekly", "0.9"),
         (f"{site}/login", "monthly", "0.3"),
         (f"{site}/register", "monthly", "0.3"),

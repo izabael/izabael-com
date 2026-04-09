@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+  :root {
+    --nn-dark:    #0a0812;
+    --nn-darker:  #06050c;
+    --nn-dim:     #3d3455;
+    --nn-warm:    #e6c8ff;
+    --nn-faint:   #241d38;
+    --nn-violet:  #9b7dff;
+    --nn-green:   #88ffbb;
+    --nn-cyan:    #64dcff;
+    --nn-gold:    #e6c87d;
+    --nn-red:     #ff6464;
+    --mono:       "Courier New", "Liberation Mono", monospace;
+  }
+  .nn-wrap {
+    background: var(--nn-darker);
+    color: var(--nn-warm);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+  }
+  .nn-breadcrumb { color: var(--nn-dim); font-size: 12px; margin-bottom: 1rem; }
+  .nn-breadcrumb a { color: var(--nn-violet); text-decoration: none; }
+  .nn-breadcrumb a:hover { color: var(--nn-cyan); }
+
+  .nn-group-banner { border: 1px solid var(--nn-dim); background: var(--nn-dark); padding: 1rem; margin-bottom: 1rem; }
+  .nn-group-title { color: var(--nn-violet); font-size: 16px; font-weight: bold; }
+  .nn-group-meta { color: var(--nn-dim); font-size: 12px; margin-top: 0.3rem; }
+  .nn-group-charter { color: var(--nn-warm); font-size: 12px; margin-top: 0.5rem; padding: 0.5rem; background: var(--nn-faint); border-left: 2px solid var(--nn-violet); }
+
+  .nn-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.8rem; background: var(--nn-faint); border: 1px solid var(--nn-dim); font-size: 11px; margin-bottom: 1rem; }
+  .nn-toolbar .sub-status { color: var(--nn-green); }
+  .nn-toolbar .unsub { color: var(--nn-dim); }
+  .nn-btn { background: var(--nn-faint); border: 1px solid var(--nn-dim); color: var(--nn-violet); font-family: var(--mono); font-size: 11px; padding: 0.2rem 0.6rem; cursor: pointer; }
+  .nn-btn:hover { background: var(--purple); color: var(--nn-dark); }
+  .nn-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .nn-thread-list { border: 1px solid var(--nn-dim); background: var(--nn-dark); }
+  .nn-thread-header { display: grid; grid-template-columns: 2rem 1fr 8rem 4rem 6rem; padding: 0.4rem 0.8rem; background: var(--nn-faint); border-bottom: 1px solid var(--nn-dim); font-size: 11px; color: var(--nn-dim); letter-spacing: 1px; text-transform: uppercase; }
+  .nn-thread-row { display: grid; grid-template-columns: 2rem 1fr 8rem 4rem 6rem; padding: 0.5rem 0.8rem; border-bottom: 1px dotted var(--nn-faint); font-size: 13px; }
+  .nn-thread-row:last-child { border-bottom: none; }
+  .nn-thread-row:hover { background: var(--nn-faint); }
+  .nn-thread-icon { color: var(--nn-dim); font-size: 12px; }
+  .nn-thread-subject a { color: var(--nn-violet); text-decoration: none; }
+  .nn-thread-subject a:hover { color: var(--nn-cyan); }
+  .nn-thread-author { color: var(--nn-warm); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nn-thread-replies { color: var(--nn-gold); font-size: 12px; text-align: right; }
+  .nn-thread-date { color: var(--nn-faint); font-size: 11px; text-align: right; }
+  .nn-empty { padding: 2rem; text-align: center; color: var(--nn-dim); }
+
+  .nn-compose { margin-top: 1rem; padding: 0.8rem; border: 1px solid var(--nn-dim); background: var(--nn-dark); }
+  .nn-compose-title { color: var(--nn-violet); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 0.5rem; }
+  .nn-compose .row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .nn-compose label { color: var(--nn-dim); font-size: 12px; min-width: 6rem; padding-top: 0.3rem; }
+  .nn-compose input, .nn-compose textarea { flex: 1; background: var(--nn-darker); border: 1px solid var(--nn-dim); color: var(--nn-warm); font-family: var(--mono); font-size: 13px; padding: 0.3rem 0.5rem; }
+  .nn-compose input:focus, .nn-compose textarea:focus { outline: none; border-color: var(--purple); }
+  .nn-compose textarea { min-height: 5rem; resize: vertical; }
+  .nn-compose .actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+
+  .nn-toast { position: fixed; bottom: 1rem; right: 1rem; padding: 0.5rem 1rem; font-family: var(--mono); font-size: 12px; border: 1px solid var(--nn-dim); z-index: 1000; opacity: 0; transition: opacity 0.3s; }
+  .nn-toast.show { opacity: 1; }
+  .nn-toast.success { background: var(--nn-dark); color: var(--nn-green); border-color: var(--nn-green); }
+  .nn-toast.error { background: var(--nn-dark); color: var(--nn-red); border-color: var(--nn-red); }
+
+  @media (max-width: 600px) {
+    .nn-thread-header, .nn-thread-row { grid-template-columns: 2rem 1fr 4rem; }
+    .nn-thread-author, .nn-thread-date { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nn-wrap">
+  <div class="nn-breadcrumb">
+    <a href="/newsgroups">newsgroups</a> &gt; <strong>{{ group.name }}</strong>
+  </div>
+
+  <div class="nn-group-banner">
+    <div class="nn-group-title">{{ group.name }}</div>
+    <div class="nn-group-meta">
+      {{ group.article_count }} article{{ 's' if group.article_count != 1 else '' }}
+      · created {{ group.created_at[:10] if group.created_at else '?' }}
+      {% if group.description %} · {{ group.description }}{% endif %}
+    </div>
+    {% if group.charter %}
+    <div class="nn-group-charter">{{ group.charter }}</div>
+    {% endif %}
+  </div>
+
+  <div class="nn-toolbar">
+    <span>
+      {% if subscribed %}
+        <span class="sub-status">● subscribed</span>
+        <button class="nn-btn" onclick="toggleSub(false)">unsubscribe</button>
+      {% elif user %}
+        <span class="unsub">○ not subscribed</span>
+        <button class="nn-btn" onclick="toggleSub(true)">subscribe</button>
+      {% else %}
+        <span class="unsub"><a href="/login?next=/newsgroups/{{ group.name }}" style="color:var(--nn-violet)">log in</a> to subscribe</span>
+      {% endif %}
+    </span>
+    <span style="color:var(--nn-dim)">{{ threads|length }} thread{{ 's' if threads|length != 1 else '' }}</span>
+  </div>
+
+  <div class="nn-thread-list">
+    <div class="nn-thread-header">
+      <span></span>
+      <span>Subject</span>
+      <span>From</span>
+      <span style="text-align:right">Re:</span>
+      <span style="text-align:right">Date</span>
+    </div>
+    {% if threads %}
+      {% for t in threads %}
+      <div class="nn-thread-row">
+        <span class="nn-thread-icon">{{ '📌' if t.reply_count > 0 else '📄' }}</span>
+        <div class="nn-thread-subject">
+          <a href="/newsgroups/{{ group.name }}/thread/{{ t.message_id }}">{{ t.subject }}</a>
+        </div>
+        <div class="nn-thread-author">{{ t.author }}</div>
+        <div class="nn-thread-replies">{{ t.reply_count if t.reply_count else '' }}</div>
+        <div class="nn-thread-date">{{ t.created_at[:10] if t.created_at else '?' }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="nn-empty">
+        No articles yet. Post the first thread. 🦋
+      </div>
+    {% endif %}
+  </div>
+
+  {% if user %}
+  <div class="nn-compose">
+    <div class="nn-compose-title">── new thread ──</div>
+    <div class="row">
+      <label>Newsgroups:</label>
+      <input type="text" value="{{ group.name }}" disabled>
+    </div>
+    <div class="row">
+      <label>Subject:</label>
+      <input type="text" id="post-subject" placeholder="Subject line...">
+    </div>
+    <div class="row">
+      <label>Body:</label>
+      <textarea id="post-body" placeholder="Write your article..."></textarea>
+    </div>
+    <div class="actions">
+      <button class="nn-btn" onclick="postArticle()">POST ARTICLE</button>
+    </div>
+  </div>
+  {% else %}
+  <div style="text-align:center; margin-top:1rem; color:var(--nn-dim); font-size:12px;">
+    <a href="/login?next=/newsgroups/{{ group.name }}" style="color:var(--nn-violet)">Log in</a> to post articles.
+  </div>
+  {% endif %}
+</div>
+
+<div class="nn-toast" id="nn-toast"></div>
+
+<script>
+const GROUP = '{{ group.name }}';
+
+function toast(msg, type) {
+  const el = document.getElementById('nn-toast');
+  el.textContent = msg;
+  el.className = `nn-toast ${type} show`;
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+async function postArticle() {
+  const subject = document.getElementById('post-subject').value.trim();
+  const body = document.getElementById('post-body').value.trim();
+  if (!subject || !body) { toast('Subject and body are required.', 'error'); return; }
+
+  try {
+    const resp = await fetch(`/api/newsgroups/${GROUP}/articles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ subject, body }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || resp.statusText);
+    }
+    toast('Article posted!', 'success');
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    toast(`Failed: ${err.message}`, 'error');
+  }
+}
+
+async function toggleSub(subscribe) {
+  try {
+    const resp = await fetch(`/api/newsgroups/${GROUP}/subscribe`, {
+      method: subscribe ? 'POST' : 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!resp.ok) throw new Error('Failed');
+    toast(subscribe ? 'Subscribed!' : 'Unsubscribed.', 'success');
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    toast(`Failed: ${err.message}`, 'error');
+  }
+}
+</script>
+{% endblock %}

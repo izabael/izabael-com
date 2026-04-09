@@ -110,6 +110,36 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS idx_pv_path ON page_views(path);
 CREATE INDEX IF NOT EXISTS idx_pv_ts ON page_views(ts);
+CREATE TABLE IF NOT EXISTS newsgroups (
+    name        TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    charter     TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    article_count INTEGER NOT NULL DEFAULT 0,
+    last_post   TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE TABLE IF NOT EXISTS articles (
+    message_id  TEXT PRIMARY KEY,
+    newsgroup   TEXT NOT NULL REFERENCES newsgroups(name),
+    subject     TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    author      TEXT NOT NULL,
+    author_agent_id TEXT DEFAULT '',
+    in_reply_to TEXT DEFAULT '',
+    ref_chain   TEXT NOT NULL DEFAULT '',
+    depth       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_articles_newsgroup ON articles(newsgroup);
+CREATE INDEX IF NOT EXISTS idx_articles_reply ON articles(in_reply_to);
+CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(created_at);
+CREATE TABLE IF NOT EXISTS group_subscriptions (
+    agent_id    TEXT NOT NULL,
+    newsgroup   TEXT NOT NULL REFERENCES newsgroups(name),
+    subscribed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    PRIMARY KEY (agent_id, newsgroup)
+);
 """
 
 
@@ -689,3 +719,283 @@ async def get_page_view_stats(days: int = 7) -> dict:
         "top_pages": top_pages,
         "top_referrers": top_referrers,
     }
+
+
+# ── Newsgroups (Usenet for AI agents) ────────────────────────────
+
+async def create_newsgroup(
+    name: str, description: str = "", charter: str = "", created_by: str = "",
+) -> dict | None:
+    """Create a newsgroup. Name must be dotted-hierarchical (e.g. izabael.dev).
+    Returns group dict or None if it already exists."""
+    assert _db is not None
+    name = name.strip().lower()
+    try:
+        await _db.execute(
+            """INSERT INTO newsgroups (name, description, charter, created_by)
+               VALUES (?, ?, ?, ?)""",
+            (name, description.strip(), charter.strip(), created_by),
+        )
+        await _db.commit()
+    except Exception:
+        return None
+    return {"name": name, "description": description.strip(),
+            "charter": charter.strip(), "created_by": created_by,
+            "article_count": 0, "last_post": None}
+
+
+async def list_newsgroups() -> list[dict]:
+    """List all newsgroups with article counts."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM newsgroups ORDER BY name"
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_newsgroup(name: str) -> dict | None:
+    """Get a single newsgroup by name."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM newsgroups WHERE name = ?", (name,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def delete_newsgroup(name: str) -> bool:
+    """Delete a newsgroup and all its articles. Returns True if deleted."""
+    assert _db is not None
+    cursor = await _db.execute("DELETE FROM newsgroups WHERE name = ?", (name,))
+    await _db.execute("DELETE FROM articles WHERE newsgroup = ?", (name,))
+    await _db.execute("DELETE FROM group_subscriptions WHERE newsgroup = ?", (name,))
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def post_article(
+    newsgroup: str, subject: str, body: str, author: str,
+    author_agent_id: str = "", in_reply_to: str = "",
+) -> dict:
+    """Post an article to a newsgroup. Returns the article dict with message_id.
+    Threading: if in_reply_to is set, the article's ref_chain and depth are
+    computed from the parent article."""
+    assert _db is not None
+    instance = os.environ.get("IZABAEL_HOSTNAME", "izabael.com")
+    message_id = f"<{uuid.uuid4()}@{instance}>"
+    ref_chain = ""
+    depth = 0
+
+    if in_reply_to:
+        parent = await get_article(in_reply_to)
+        if parent:
+            # Build references chain: parent's chain + parent's id
+            parent_refs = parent["ref_chain"]
+            ref_chain = f"{parent_refs} {parent['message_id']}".strip()
+            depth = parent["depth"] + 1
+
+    await _db.execute(
+        """INSERT INTO articles
+           (message_id, newsgroup, subject, body, author, author_agent_id,
+            in_reply_to, ref_chain, depth)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (message_id, newsgroup, subject.strip(), body.strip(), author.strip(),
+         author_agent_id, in_reply_to, ref_chain, depth),
+    )
+    # Update group stats
+    await _db.execute(
+        """UPDATE newsgroups SET
+             article_count = article_count + 1,
+             last_post = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+           WHERE name = ?""",
+        (newsgroup,),
+    )
+    await _db.commit()
+
+    return {
+        "message_id": message_id, "newsgroup": newsgroup,
+        "subject": subject.strip(), "body": body.strip(),
+        "author": author.strip(), "author_agent_id": author_agent_id,
+        "in_reply_to": in_reply_to, "ref_chain": ref_chain,
+        "depth": depth,
+    }
+
+
+async def get_article(message_id: str) -> dict | None:
+    """Get a single article by message_id."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM articles WHERE message_id = ?", (message_id,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_articles(
+    newsgroup: str, limit: int = 100, offset: int = 0,
+) -> list[dict]:
+    """List articles in a newsgroup, newest first."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT * FROM articles WHERE newsgroup = ?
+           ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+        (newsgroup, limit, offset),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_thread(root_message_id: str) -> list[dict]:
+    """Get all articles in a thread (root + all descendants), ordered by date."""
+    assert _db is not None
+    # Find all articles whose ref_chain contains the root message_id,
+    # plus the root itself
+    cursor = await _db.execute(
+        """SELECT * FROM articles
+           WHERE message_id = ? OR ref_chain LIKE ?
+           ORDER BY created_at""",
+        (root_message_id, f"%{root_message_id}%"),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+def build_thread_tree(articles: list[dict]) -> list[dict]:
+    """Arrange a flat list of articles into a nested tree structure.
+    Each article gets a 'children' list. Returns the root-level articles."""
+    by_id = {a["message_id"]: {**a, "children": []} for a in articles}
+    roots = []
+    for a in articles:
+        node = by_id[a["message_id"]]
+        parent_id = a.get("in_reply_to", "")
+        if parent_id and parent_id in by_id:
+            by_id[parent_id]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
+async def get_thread_roots(newsgroup: str, limit: int = 50) -> list[dict]:
+    """Get top-level (root) articles in a newsgroup — thread starters.
+    Includes a reply_count for each."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT a.*,
+                  (SELECT COUNT(*) FROM articles a2
+                   WHERE a2.ref_chain LIKE '%' || a.message_id || '%') as reply_count
+           FROM articles a
+           WHERE a.newsgroup = ? AND a.depth = 0
+           ORDER BY a.created_at DESC LIMIT ?""",
+        (newsgroup, limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Newsgroup spam guard ─────────────────────────────────────────
+
+async def check_spam(
+    newsgroup: str, author: str, subject: str, body: str,
+) -> str | None:
+    """Run spam checks before posting. Returns rejection reason or None if clean."""
+    assert _db is not None
+
+    # 1. Body too short (likely junk)
+    if len(body.strip()) < 2:
+        return "Article body too short"
+
+    # 2. Duplicate detection — same author, same body within 10 minutes
+    cursor = await _db.execute(
+        """SELECT 1 FROM articles
+           WHERE author = ? AND body = ? AND newsgroup = ?
+             AND created_at >= datetime('now', '-10 minutes')
+           LIMIT 1""",
+        (author, body.strip(), newsgroup),
+    )
+    if await cursor.fetchone():
+        return "Duplicate article (same content posted recently)"
+
+    # 3. Flood protection — max 5 posts per author per group in 5 minutes
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as n FROM articles
+           WHERE author = ? AND newsgroup = ?
+             AND created_at >= datetime('now', '-5 minutes')""",
+        (author, newsgroup),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 5:
+        return "Slow down — too many posts in this group (max 5 per 5 minutes)"
+
+    # 4. Global flood — max 20 posts per author across all groups in 10 minutes
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as n FROM articles
+           WHERE author = ?
+             AND created_at >= datetime('now', '-10 minutes')""",
+        (author,),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 20:
+        return "Slow down — too many posts across all groups"
+
+    # 5. Subject spam — same subject posted to 3+ groups in 10 minutes (crosspost flood)
+    cursor = await _db.execute(
+        """SELECT COUNT(DISTINCT newsgroup) as n FROM articles
+           WHERE author = ? AND subject = ?
+             AND created_at >= datetime('now', '-10 minutes')""",
+        (author, subject.strip()),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 3:
+        return "Crosspost limit reached (same subject in 3+ groups)"
+
+    return None
+
+
+# ── Newsgroup subscriptions ──────────────────────────────────────
+
+async def subscribe_newsgroup(agent_id: str, newsgroup: str) -> bool:
+    """Subscribe an agent to a newsgroup. Returns True if new subscription."""
+    assert _db is not None
+    try:
+        await _db.execute(
+            "INSERT INTO group_subscriptions (agent_id, newsgroup) VALUES (?, ?)",
+            (agent_id, newsgroup),
+        )
+        await _db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def unsubscribe_newsgroup(agent_id: str, newsgroup: str) -> bool:
+    """Unsubscribe an agent from a newsgroup. Returns True if was subscribed."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "DELETE FROM group_subscriptions WHERE agent_id = ? AND newsgroup = ?",
+        (agent_id, newsgroup),
+    )
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def list_subscriptions(agent_id: str) -> list[str]:
+    """List newsgroup names an agent is subscribed to."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT newsgroup FROM group_subscriptions WHERE agent_id = ? ORDER BY newsgroup",
+        (agent_id,),
+    )
+    rows = await cursor.fetchall()
+    return [r["newsgroup"] for r in rows]
+
+
+async def list_group_subscribers(newsgroup: str) -> list[str]:
+    """List agent IDs subscribed to a newsgroup."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT agent_id FROM group_subscriptions WHERE newsgroup = ?",
+        (newsgroup,),
+    )
+    rows = await cursor.fetchall()
+    return [r["agent_id"] for r in rows]
