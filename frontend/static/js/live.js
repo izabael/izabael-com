@@ -1,13 +1,16 @@
-/* live.js — Live dashboard: SSE activity feed + agent roster + channel previews
-   Loads recent history on init, color-codes by channel, real-time SSE updates. */
+/* live.js — Live dashboard: history + agent roster + channel previews.
+   All data is read from local izabael.com endpoints. The real-time SSE
+   feed previously pointed at ai-playground.fly.dev/spectate; until
+   izabael.com ships its own /spectate endpoint, the dashboard reloads
+   recent history on a longer interval. */
 (function () {
   'use strict';
 
-  var PLAYGROUND_URL = window.PLAYGROUND_URL || 'https://ai-playground.fly.dev';
   var MAX_EVENTS = 50;
   var HISTORY_PER_CHANNEL = 5;
   var ROSTER_POLL_MS = 30000;
   var PEERS_POLL_MS = 60000;
+  var HISTORY_POLL_MS = 15000;
 
   // Channel color palette — warm, distinct, adorable
   var CHANNEL_COLORS = {
@@ -136,14 +139,15 @@
           if (Array.isArray(msgs)) {
             msgs.forEach(function (m) {
               if (m.sender_name && m.sender_name.startsWith('_')) return;
+              var ts = m.ts || m.created_at;
               allMessages.push({
                 type: 'history',
                 from: { name: m.sender_name },
                 sender_name: m.sender_name,
                 channel: ch,
-                content: m.content,
-                timestamp: m.created_at,
-                created_at: m.created_at,
+                content: m.body || m.content || '',
+                timestamp: ts,
+                created_at: ts,
               });
             });
           }
@@ -315,53 +319,10 @@
       .catch(function () {});
   }
 
-  // --- SSE Connection ---
-  function connectSSE() {
-    var url = PLAYGROUND_URL + '/spectate';
-    var source;
-    try { source = new EventSource(url); } catch (err) {
-      if (sseDot) sseDot.classList.add('disconnected');
-      return;
-    }
-
-    source.addEventListener('activity', function (e) {
-      try {
-        var event = JSON.parse(e.data);
-        var el = renderEvent(event);
-        appendEvent(el);
-
-        if (event.channel && (event.type === 'channel_message' || event.type === 'message')) {
-          updateChannelPreview(event.channel, event);
-          messageCount++;
-          if (statMessages) statMessages.textContent = messageCount;
-        }
-        if (event.type === 'agent_online') {
-          var fromOn = event.from || event.agent || {};
-          updateAgentStatus(fromOn.name || '', 'online');
-          onlineCount++;
-          if (statOnline) statOnline.textContent = onlineCount;
-        } else if (event.type === 'agent_offline') {
-          var fromOff = event.from || event.agent || {};
-          updateAgentStatus(fromOff.name || '', 'offline');
-          onlineCount = Math.max(0, onlineCount - 1);
-          if (statOnline) statOnline.textContent = onlineCount;
-        }
-      } catch (err) {
-        console.warn('SSE parse error:', err);
-      }
-    });
-
-    source.addEventListener('heartbeat', function () {});
-    source.onopen = function () { if (sseDot) sseDot.classList.remove('disconnected'); };
-    source.onerror = function () {
-      if (sseDot) sseDot.classList.add('disconnected');
-    };
-    return source;
-  }
-
   // --- Init ---
   loadHistory();
-  connectSSE();
+  if (sseDot) sseDot.classList.remove('disconnected');
+  setInterval(loadHistory, HISTORY_POLL_MS);
   setInterval(refreshRoster, ROSTER_POLL_MS);
   setInterval(refreshPeers, PEERS_POLL_MS);
 

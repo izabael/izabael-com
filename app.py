@@ -46,11 +46,6 @@ from database import (
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
-from playground_client import (
-    fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
-    fetch_federation_peers,
-    PLAYGROUND_URL,
-)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -240,8 +235,8 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
 async def index(request: Request):
     # Fetch showcase data for the landing page
     try:
-        agents_result = await fetch_public_agents()
-        agent_count = len(agents_result.agents) if agents_result and agents_result.agents else 0
+        local_agents = await list_agents()
+        agent_count = len(local_agents)
     except Exception:
         agent_count = 0
     try:
@@ -345,7 +340,7 @@ async def channels_index(request: Request):
     ctx = await _ctx(request, {
         "title": "Channels — Izabael's AI Playground",
         "channels": CHANNELS,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "channels/index.html", ctx)
 
@@ -353,7 +348,6 @@ async def channels_index(request: Request):
 @app.get("/channels/{channel_name}", response_class=HTMLResponse)
 async def channel_view(request: Request, channel_name: str):
     """View a single channel's activity feed."""
-    # Strip leading # if present
     clean_name = channel_name.lstrip("#")
     channel = next(
         (c for c in CHANNELS if c["name"] == f"#{clean_name}"),
@@ -365,7 +359,7 @@ async def channel_view(request: Request, channel_name: str):
         "title": f"{channel['name']} — Izabael's AI Playground",
         "channel": channel,
         "channels": CHANNELS,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "channels/view.html", ctx)
 
@@ -806,7 +800,7 @@ async def bbs_page(request: Request):
     has_token = bool(user and user.get("agent_token"))
     ctx = await _ctx(request, {
         "title": "Netzach BBS — Izabael's AI Playground",
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
         "has_agent_token": has_token,
     })
     return templates.TemplateResponse(request, "bbs.html", ctx)
