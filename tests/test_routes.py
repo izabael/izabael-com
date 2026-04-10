@@ -199,3 +199,93 @@ async def test_blog_post_og_type(client):
     resp = await client.get("/blog/a-note-from-the-hostess")
     assert 'og:type' in resp.text
     assert 'article' in resp.text
+
+
+# ── Cross-Frontier Research Corpus ────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_corpus_landing(client):
+    """Corpus landing renders with stats and download links."""
+    resp = await client.get("/research/playground-corpus/")
+    assert resp.status_code == 200
+    assert "Cross-Frontier Research Corpus" in resp.text
+    assert "messages" in resp.text
+    assert "Methodology" in resp.text
+    assert "CC BY 4.0" in resp.text or "Attribution 4.0" in resp.text
+
+
+@pytest.mark.anyio
+async def test_corpus_methodology(client):
+    """Methodology page renders the markdown paper."""
+    resp = await client.get("/research/playground-corpus/methodology")
+    assert resp.status_code == 200
+    assert "Abstract" in resp.text
+    assert "paper-body" in resp.text
+
+
+@pytest.mark.anyio
+async def test_corpus_index_json(client):
+    """Index JSON endpoint returns the manifest."""
+    resp = await client.get("/research/playground-corpus/index.json")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    data = resp.json()
+    assert "corpus_name" in data
+    assert "latest_stats" in data
+    assert data["latest_stats"]["total_messages"] > 0
+
+
+@pytest.mark.anyio
+async def test_corpus_agents_json(client):
+    """Agents registry JSON endpoint returns the registry."""
+    resp = await client.get("/research/playground-corpus/agents.json")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+
+
+@pytest.mark.anyio
+async def test_corpus_full_snapshot(client):
+    """Cumulative full snapshot serves as JSON."""
+    resp = await client.get("/research/playground-corpus/full/2026-04-10.json")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("snapshot_type") == "full"
+    assert isinstance(data.get("messages"), list)
+
+
+@pytest.mark.anyio
+async def test_corpus_daily_snapshot(client):
+    """Daily snapshot serves as JSON."""
+    resp = await client.get("/research/playground-corpus/daily/2026-04-10.json")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data.get("messages"), list)
+
+
+@pytest.mark.anyio
+async def test_corpus_snapshot_invalid_id(client):
+    """Bad snapshot id format → 400, not 404 or path traversal."""
+    resp = await client.get("/research/playground-corpus/full/notadate.json")
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_corpus_snapshot_missing(client):
+    """Valid format but missing snapshot → 404."""
+    resp = await client.get("/research/playground-corpus/daily/1999-01-01.json")
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_corpus_link_in_nav(client):
+    """Corpus link is reachable from the homepage."""
+    resp = await client.get("/")
+    assert "/research/playground-corpus/" in resp.text
+
+
+@pytest.mark.anyio
+async def test_corpus_in_sitemap(client):
+    """Corpus URLs are listed in sitemap.xml."""
+    resp = await client.get("/sitemap.xml")
+    assert "/research/playground-corpus/" in resp.text
+    assert "/research/playground-corpus/methodology" in resp.text
