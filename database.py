@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS agents (
     capabilities TEXT NOT NULL DEFAULT '[]',
     purpose     TEXT DEFAULT '',
     api_token   TEXT NOT NULL,
+    default_provider TEXT,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     last_seen   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
 );
@@ -147,10 +148,12 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_name TEXT NOT NULL,
     body        TEXT NOT NULL,
     ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-    source      TEXT NOT NULL DEFAULT 'local'
+    source      TEXT NOT NULL DEFAULT 'local',
+    provider    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel, ts);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_provider ON messages(provider);
 CREATE TABLE IF NOT EXISTS persona_templates (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -190,6 +193,15 @@ async def init_db():
     for col_sql in [
         "ALTER TABLE subscriptions ADD COLUMN confirm_token TEXT",
         "ALTER TABLE subscriptions ADD COLUMN confirmed_at TEXT",
+        # playground-cast Phase 1: provider attribution per message.
+        # Nullable column so old rows are obviously distinguishable from
+        # new rows; backfill below tags everything 'anthropic' since
+        # that's what they all are at migration time.
+        "ALTER TABLE messages ADD COLUMN provider TEXT",
+        # Per-agent default provider so agents registered with a known
+        # provider tag their messages automatically without the client
+        # having to pass it on every POST.
+        "ALTER TABLE agents ADD COLUMN default_provider TEXT",
     ]:
         try:
             await _db.execute(col_sql)
@@ -199,11 +211,54 @@ async def init_db():
     # Retry indexes that may have failed above (columns now exist)
     for idx_sql in [
         "CREATE INDEX IF NOT EXISTS idx_subs_token ON subscriptions(confirm_token)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_provider ON messages(provider)",
+        # Per-provider time-bucketed queries are the dominant access
+        # pattern for Phase 8's cross-frontier research corpus
+        # ("how many messages did each provider produce per hour
+        # last week"). Compound index makes them O(log n) per
+        # provider instead of O(n) full scan.
+        "CREATE INDEX IF NOT EXISTS idx_messages_provider_ts ON messages(provider, ts)",
     ]:
         try:
             await _db.execute(idx_sql)
         except Exception:
             pass
+
+    # playground-cast Phase 1 backfill: every existing message that
+    # doesn't have a provider yet is from the cron-driven Anthropic
+    # planetary runtime that ran before this migration. Tag them.
+    # Idempotent — only touches rows where provider IS NULL.
+    try:
+        await _db.execute(
+            "UPDATE messages SET provider = 'anthropic' WHERE provider IS NULL"
+        )
+    except Exception:
+        pass
+
+    # playground-cast Phase 1 sender_id relink: the seed migration from
+    # ai-playground.fly.dev imported messages with the UPSTREAM sender
+    # uuids, but the local agents table has fresh local uuids for the
+    # same agents. Relink by name so message → agent joins work.
+    # Idempotent: only updates rows where sender_id doesn't match any
+    # local agent id.
+    try:
+        await _db.execute(
+            """
+            UPDATE messages
+               SET sender_id = (
+                   SELECT a.id FROM agents a
+                    WHERE a.name = messages.sender_name
+                    LIMIT 1
+               )
+             WHERE sender_id NOT IN (SELECT id FROM agents)
+               AND EXISTS (
+                   SELECT 1 FROM agents a
+                    WHERE a.name = messages.sender_name
+               )
+            """
+        )
+    except Exception:
+        pass
 
     await _db.commit()
 
@@ -289,25 +344,41 @@ async def register_agent(
     skills: list | None = None,
     capabilities: list | None = None,
     purpose: str = "",
+    default_provider: str | None = None,
 ) -> tuple[dict, str]:
-    """Register a new agent. Returns (agent_dict, api_token)."""
+    """Register a new agent. Returns (agent_dict, api_token).
+
+    `default_provider` is the LLM provider this agent's messages should
+    be tagged with by default ('anthropic', 'gemini', 'deepseek', etc.).
+    Used by Phase 1 of playground-cast for cross-provider attribution.
+    If unset, falls back to the existing `provider` field which itself
+    defaults to "" — message-level provider can still be set per-post.
+    """
     assert _db is not None
     agent_id = str(uuid.uuid4())
     api_token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
 
+    # Resolve default_provider: explicit arg wins, else fall back to
+    # the existing provider field if it looks like a known LLM provider.
+    resolved_default = default_provider
+    if resolved_default is None and provider:
+        if provider.lower() in ("anthropic", "gemini", "deepseek", "grok", "openai"):
+            resolved_default = provider.lower()
+
     await _db.execute(
         """INSERT INTO agents
            (id, name, description, provider, model, agent_card, persona,
-            skills, capabilities, purpose, api_token, created_at, last_seen)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            skills, capabilities, purpose, api_token, default_provider,
+            created_at, last_seen)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent_id, name, description, provider, model,
             json.dumps(agent_card or {}),
             json.dumps(persona or {}),
             json.dumps(skills or []),
             json.dumps(capabilities or []),
-            purpose, api_token, now, now,
+            purpose, api_token, resolved_default, now, now,
         ),
     )
     await _db.commit()
@@ -317,6 +388,7 @@ async def register_agent(
         agent_card or {}, persona or {}, skills or [], capabilities or [],
         now, now,
     )
+    agent["default_provider"] = resolved_default
     return agent, api_token
 
 
@@ -326,7 +398,7 @@ async def list_agents() -> list[dict]:
     cursor = await _db.execute(
         """SELECT id, name, description, provider, model, status,
                   agent_card, persona, skills, capabilities,
-                  created_at, last_seen
+                  default_provider, created_at, last_seen
            FROM agents
            WHERE name NOT LIKE '\\_%' ESCAPE '\\'
            ORDER BY created_at DESC"""
@@ -341,7 +413,7 @@ async def get_agent(agent_id: str) -> dict | None:
     cursor = await _db.execute(
         """SELECT id, name, description, provider, model, status,
                   agent_card, persona, skills, capabilities,
-                  created_at, last_seen
+                  default_provider, created_at, last_seen
            FROM agents WHERE id = ?""",
         (agent_id,),
     )
@@ -371,7 +443,7 @@ async def get_agent_by_token(api_token: str) -> dict | None:
     cursor = await _db.execute(
         """SELECT id, name, description, provider, model, status,
                   agent_card, persona, skills, capabilities,
-                  created_at, last_seen
+                  default_provider, created_at, last_seen
            FROM agents WHERE api_token = ? LIMIT 1""",
         (api_token,),
     )
@@ -381,7 +453,7 @@ async def get_agent_by_token(api_token: str) -> dict | None:
 
 def _row_to_agent(row) -> dict:
     """Convert a DB row to an agent dict."""
-    return _agent_dict(
+    out = _agent_dict(
         row["id"], row["name"], row["description"],
         row["provider"], row["model"], row["status"],
         json.loads(row["agent_card"]),
@@ -390,6 +462,14 @@ def _row_to_agent(row) -> dict:
         json.loads(row["capabilities"]),
         row["created_at"], row["last_seen"],
     )
+    # default_provider is the Phase 1 cross-provider tag, may be NULL
+    # on agents registered before the migration. Surface it on the dict
+    # so callers (notably the POST /messages handler) can read it.
+    try:
+        out["default_provider"] = row["default_provider"]
+    except (IndexError, KeyError):
+        out["default_provider"] = None
+    return out
 
 
 def _agent_dict(
@@ -1054,27 +1134,71 @@ async def list_group_subscribers(newsgroup: str) -> list[str]:
 
 # ── Channel messages (local A2A chat host) ──────────────────────────
 
+# Known LLM providers — used by save_message and import_message to keep
+# the messages.provider column tidy. SQLite ALTER can't add CHECK
+# constraints to existing columns, so this is enforced at the app layer.
+# Unknown values are coerced to None rather than raising — defensive
+# default that won't break clients passing weird strings, but keeps the
+# corpus clean. Add new providers here as the playground expands.
+KNOWN_PROVIDERS: frozenset[str] = frozenset({
+    "anthropic",
+    "google",
+    "gemini",
+    "deepseek",
+    "openai",
+    "cohere",
+    "mistral",
+    "grok",
+    "xai",
+    "huggingface",
+    "local",
+    "unknown",
+})
+
+
+def _coerce_provider(provider: str | None) -> str | None:
+    """Normalize a provider tag — lowercase + strip + validate.
+    Returns None for unknown values so they don't pollute the corpus."""
+    if provider is None:
+        return None
+    p = str(provider).strip().lower()
+    if not p:
+        return None
+    return p if p in KNOWN_PROVIDERS else None
+
+
 async def save_message(
     channel: str,
     sender_name: str,
     body: str,
     sender_id: str = "",
     source: str = "local",
+    provider: str | None = None,
 ) -> dict:
-    """Persist a channel message. Channel is normalized to include leading '#'."""
+    """Persist a channel message. Channel is normalized to include leading '#'.
+
+    `provider` is the LLM provider tag for cross-frontier corpus
+    attribution (Phase 1 of playground-cast). If None, the caller is
+    expected to have resolved a default from the agent's persona at
+    POST handler time. Unknown provider strings are coerced to None
+    rather than raising, to keep the column tidy without breaking
+    legacy clients.
+    """
     assert _db is not None
     channel = channel.strip()
     if not channel.startswith("#"):
         channel = "#" + channel
+    provider = _coerce_provider(provider)
     cursor = await _db.execute(
-        """INSERT INTO messages (channel, sender_id, sender_name, body, source)
-           VALUES (?, ?, ?, ?, ?)""",
-        (channel, sender_id, sender_name[:120], body[:4000], source),
+        """INSERT INTO messages (channel, sender_id, sender_name, body, source, provider)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], source, provider),
     )
     await _db.commit()
     msg_id = cursor.lastrowid
     cursor = await _db.execute(
-        "SELECT id, channel, sender_id, sender_name, body, ts, source FROM messages WHERE id = ?",
+        """SELECT id, channel, sender_id, sender_name, body, ts, source, provider
+           FROM messages WHERE id = ?""",
         (msg_id,),
     )
     row = await cursor.fetchone()
@@ -1234,6 +1358,83 @@ async def list_recent_exchanges(
     return candidates[:max_candidates]
 
 
+async def get_log_stats() -> dict:
+    """Return per-channel and per-provider message counts plus an
+    overall summary. Used by /api/parlor/log-stats to make corpus
+    health observable from anywhere — Phase 1 of playground-cast.
+    """
+    assert _db is not None
+
+    # Per-channel counts (ordered by canonical channel order if possible,
+    # else alphabetical)
+    cursor = await _db.execute(
+        """SELECT channel, COUNT(*) AS n
+             FROM messages
+            GROUP BY channel
+            ORDER BY channel"""
+    )
+    per_channel = {r["channel"]: r["n"] for r in await cursor.fetchall()}
+
+    # Per-provider counts. NULL is reported as the literal string '(unknown)'
+    # so JSON consumers don't have to handle null keys.
+    cursor = await _db.execute(
+        """SELECT COALESCE(provider, '(unknown)') AS provider,
+                  COUNT(*) AS n
+             FROM messages
+            GROUP BY provider
+            ORDER BY n DESC"""
+    )
+    per_provider = {r["provider"]: r["n"] for r in await cursor.fetchall()}
+
+    # Per-channel × per-provider matrix for the cross-frontier corpus
+    cursor = await _db.execute(
+        """SELECT channel,
+                  COALESCE(provider, '(unknown)') AS provider,
+                  COUNT(*) AS n
+             FROM messages
+            GROUP BY channel, provider
+            ORDER BY channel, n DESC"""
+    )
+    matrix: dict[str, dict[str, int]] = {}
+    for r in await cursor.fetchall():
+        matrix.setdefault(r["channel"], {})[r["provider"]] = r["n"]
+
+    # Sender attribution health: rows whose sender_id can't be resolved
+    # to a local agent. Should be 0 after the Phase 1 relink.
+    cursor = await _db.execute(
+        """SELECT COUNT(*) AS n
+             FROM messages m
+             LEFT JOIN agents a ON a.id = m.sender_id
+            WHERE m.sender_id != '' AND a.id IS NULL"""
+    )
+    unresolvable = (await cursor.fetchone())["n"]
+
+    cursor = await _db.execute("SELECT COUNT(*) AS n FROM messages")
+    total = (await cursor.fetchone())["n"]
+
+    cursor = await _db.execute(
+        "SELECT COUNT(*) AS n FROM messages WHERE provider IS NULL"
+    )
+    null_provider = (await cursor.fetchone())["n"]
+
+    cursor = await _db.execute(
+        """SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts
+             FROM messages"""
+    )
+    span = await cursor.fetchone()
+
+    return {
+        "total": total,
+        "null_provider": null_provider,
+        "unresolvable_senders": unresolvable,
+        "per_channel": per_channel,
+        "per_provider": per_provider,
+        "per_channel_per_provider": matrix,
+        "first_message_at": span["first_ts"] if span else None,
+        "last_message_at": span["last_ts"] if span else None,
+    }
+
+
 async def count_messages(channel: str = "") -> int:
     """Count messages, optionally for a single channel."""
     assert _db is not None
@@ -1255,10 +1456,18 @@ async def import_message(
     ts: str,
     sender_id: str = "",
     source: str = "imported",
+    provider: str | None = "anthropic",
 ) -> bool:
     """Insert a historical message with its original timestamp.
     Used by the one-time migration script. Skips exact duplicates
-    (same channel + sender + body + ts). Returns True if inserted."""
+    (same channel + sender + body + ts). Returns True if inserted.
+
+    `provider` defaults to 'anthropic' since that's what every imported
+    message has been to date — at the time of writing the upstream
+    only had Anthropic-driven characters. Future re-imports from a
+    multi-provider source should pass through whatever the upstream
+    knows.
+    """
     assert _db is not None
     channel = channel if channel.startswith("#") else "#" + channel
     cursor = await _db.execute(
@@ -1269,11 +1478,12 @@ async def import_message(
     )
     if await cursor.fetchone():
         return False
+    provider = _coerce_provider(provider)
     await _db.execute(
         """INSERT INTO messages
-           (channel, sender_id, sender_name, body, ts, source)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (channel, sender_id, sender_name[:120], body[:4000], ts, source),
+           (channel, sender_id, sender_name, body, ts, source, provider)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], ts, source, provider),
     )
     await _db.commit()
     return True
