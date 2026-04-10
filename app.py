@@ -315,25 +315,13 @@ async def join(request: Request):
 
 @app.get("/agents", response_class=HTMLResponse)
 async def agents_index(request: Request):
-    """Public browser for agents on this instance.
-
-    Reads from the local agent roster. Falls back to the remote
-    playground backend if no local agents exist (transition period).
-    """
-    # Always fetch from playground backend (source of truth for agents)
-    result = await fetch_public_agents()
-    agents = result.agents
-    backend_reachable = result.backend_reachable
-    backend_error = result.error
-    if not agents:
-        # Fallback to local roster if backend is down
-        agents = await list_agents()
-        backend_reachable = bool(agents)
+    """Public browser for agents on this instance."""
+    agents = await list_agents()
     ctx = await _ctx(request, {
         "title": "Agents — Izabael's AI Playground",
         "agents": agents,
-        "backend_reachable": backend_reachable,
-        "backend_error": backend_error,
+        "backend_reachable": True,
+        "backend_error": "",
         "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "agents/index.html", ctx)
@@ -512,45 +500,42 @@ async def noobs_page(request: Request):
 
 @app.get("/mods", response_class=HTMLResponse)
 async def mods_index(request: Request):
-    """Persona template library — RPG classes, archetypes, and community templates."""
-    result = await fetch_persona_templates()
-    starters = [t for t in result.templates if t.get("is_starter")]
-    community = [t for t in result.templates if not t.get("is_starter")]
+    """Persona template library — RPG classes, archetypes, and community templates.
 
-    # Check if any RPG classes are on the backend yet
+    Reads templates from the local persona_templates table (seeded from
+    seeds/persona_templates.json on first boot)."""
+    templates_all = await list_persona_templates()
+    starters = [t for t in templates_all if t.get("is_starter")]
+    community = [t for t in templates_all if not t.get("is_starter")]
+
     rpg_archetypes = {"wizard", "fighter", "healer", "rogue", "monarch", "bard"}
-    backend_rpg = [t for t in result.templates if t.get("archetype") in rpg_archetypes]
-    # Use backend RPG templates if they exist, otherwise hardcoded
-    rpg_classes = backend_rpg if backend_rpg else RPG_CLASSES
-    # Filter backend starters to exclude RPG ones (shown separately)
+    local_rpg = [t for t in templates_all if t.get("archetype") in rpg_archetypes]
+    rpg_classes = local_rpg if local_rpg else RPG_CLASSES
     starters = [t for t in starters if t.get("archetype") not in rpg_archetypes]
 
     ctx = await _ctx(request, {
         "title": "Mods — Izabael's AI Playground",
         "rpg_classes": rpg_classes,
-        "rpg_from_backend": bool(backend_rpg),
+        "rpg_from_backend": bool(local_rpg),
         "starters": starters,
         "community": community,
-        "backend_reachable": result.backend_reachable,
-        "backend_error": result.error,
-        "playground_url": PLAYGROUND_URL,
+        "backend_reachable": True,
+        "backend_error": "",
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "mods/index.html", ctx)
 
 
 @app.get("/agents/{agent_id}", response_class=HTMLResponse)
 async def agent_detail(request: Request, agent_id: str):
-    """Detail page for a single agent."""
+    """Detail page for a single local agent."""
     agent = await get_agent(agent_id)
-    if agent is None:
-        # Fallback to remote during transition
-        agent = await fetch_agent_by_id(agent_id)
     if agent is None:
         raise HTTPException(404, "Agent not found")
     ctx = await _ctx(request, {
         "title": f"{agent['name']} — Izabael's AI Playground",
         "agent": agent,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "agents/detail.html", ctx)
 
@@ -1133,19 +1118,10 @@ async def a2a_register_agent(reg: AgentRegistration):
 async def a2a_discover():
     """Public agent discovery endpoint (A2A protocol).
 
-    Merges local agent roster with playground backend agents.
-    No auth required.
+    Returns the local agent roster on this instance. For a federated
+    view across peers, use /federation/discover instead.
     """
-    local = await list_agents()
-    result = await fetch_public_agents()
-    backend = result.agents or []
-    # Merge: backend agents + any local agents not already in backend
-    backend_names = {a.get("name") for a in backend}
-    merged = list(backend)
-    for agent in local:
-        if agent.get("name") not in backend_names:
-            merged.append(agent)
-    return merged
+    return await list_agents()
 
 
 @app.get("/.well-known/agent.json", tags=["a2a"])
