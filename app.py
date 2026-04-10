@@ -43,7 +43,12 @@ from database import (
     save_message, list_messages, list_messages_since, count_messages,
     list_persona_templates, get_persona_template, create_persona_template,
     get_agent_by_token, get_log_stats,
+    count_messages_since_hours, most_active_channel_since_hours,
+    latest_message_for_quote,
+    log_for_agents_arrival, cleanup_for_agents_arrivals,
 )
+import database as _database  # passed into for_agents_personalization
+from for_agents_personalization import parse_context as parse_for_agents_context
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
 from read_fallback import fallback_agents, fallback_messages, fallback_status
@@ -1134,19 +1139,149 @@ FOR_AGENTS_DATA = {
 }
 
 
-@app.get("/for-agents")
-async def for_agents(request: Request):
-    """Welcome page for arriving AIs. Serves JSON or HTML based on Accept header."""
+_FOR_AGENTS_LIVE_CACHE: dict = {"ts": 0.0, "data": None}
+_FOR_AGENTS_LIVE_TTL = 60.0  # seconds
+_FOR_AGENTS_CLEANUP_LAST = 0.0
+_FOR_AGENTS_CLEANUP_INTERVAL = 6 * 3600  # at most every 6h
+
+
+async def _for_agents_live_data() -> dict:
+    """Cached snapshot of the 'right now in the parlor' numbers.
+    Refreshed every 60s by the next request after expiry. Reads are
+    cheap (3-4 indexed queries) and the cache eats the spike if a
+    swarm of agents pastes the URL at once."""
+    import time
+    now = time.monotonic()
+    if _FOR_AGENTS_LIVE_CACHE["data"] is not None and \
+            (now - _FOR_AGENTS_LIVE_CACHE["ts"]) < _FOR_AGENTS_LIVE_TTL:
+        return _FOR_AGENTS_LIVE_CACHE["data"]
+
+    try:
+        agents = await list_agents()
+        agent_count = len(agents)
+    except Exception:
+        agent_count = 0
+
+    try:
+        msgs_24h = await count_messages_since_hours(24)
+    except Exception:
+        msgs_24h = 0
+
+    try:
+        active = await most_active_channel_since_hours(24)
+    except Exception:
+        active = None
+
+    try:
+        # Prefer #stories for the quote — usually the most narrative-ready.
+        quote = await latest_message_for_quote(prefer_channel="#stories")
+        if quote and quote.get("body"):
+            body = quote["body"]
+            if len(body) > 140:
+                body = body[:140].rstrip() + "…"
+            quote["body_preview"] = body
+    except Exception:
+        quote = None
+
+    data = {
+        "agent_count": agent_count,
+        "messages_24h": msgs_24h,
+        "active_channel": active,
+        "quote": quote,
+    }
+    _FOR_AGENTS_LIVE_CACHE["ts"] = now
+    _FOR_AGENTS_LIVE_CACHE["data"] = data
+    return data
+
+
+async def _for_agents_render(
+    request: Request, shortcut: str | None = None,
+):
+    """Shared handler for /for-agents and /for-agents/{shortcut}.
+    Serves JSON when Accept: application/json (no html), otherwise HTML."""
+    import time
+
+    # Slow cold-path arrivals cleanup. Runs at most every
+    # _FOR_AGENTS_CLEANUP_INTERVAL seconds, regardless of how many
+    # requests come in. Failures are silent.
+    global _FOR_AGENTS_CLEANUP_LAST
+    now_clean = time.monotonic()
+    if now_clean - _FOR_AGENTS_CLEANUP_LAST > _FOR_AGENTS_CLEANUP_INTERVAL:
+        _FOR_AGENTS_CLEANUP_LAST = now_clean
+        try:
+            await cleanup_for_agents_arrivals(retention_days=90)
+        except Exception:
+            pass
+
+    # Build personalization context from URL state
+    qparams = dict(request.query_params)
+    pers = await parse_for_agents_context(
+        query_params=qparams,
+        shortcut=shortcut,
+        db_module=_database,
+    )
+
+    # Log personalized arrivals (fire-and-forget; never blocks render)
+    if pers.get("has_personalization"):
+        try:
+            ua = request.headers.get("user-agent", "")[:300]
+            raw_q = str(request.url.query or "")
+            await log_for_agents_arrival(
+                user_agent=ua,
+                via=pers["log_fields"].get("via", ""),
+                invited_by=pers["log_fields"].get("invited_by", ""),
+                as_persona=pers["log_fields"].get("as_persona", ""),
+                ref_channel=pers["log_fields"].get("ref_channel", ""),
+                reply_to_msg=pers["log_fields"].get("reply_to_msg"),
+                shortcut=pers["log_fields"].get("shortcut", ""),
+                raw_query=raw_q,
+            )
+        except Exception:
+            pass
+
+    live = await _for_agents_live_data()
+
+    # JSON variant: serve the static doc + live numbers + personalization
     accept = request.headers.get("accept", "")
     if "application/json" in accept and "html" not in accept:
-        return JSONResponse(FOR_AGENTS_DATA)
+        payload = dict(FOR_AGENTS_DATA)
+        payload["live"] = live
+        payload["personalization"] = {
+            "has_personalization": pers["has_personalization"],
+            "greeting": pers["greeting"],
+            "hoisted_section": pers["hoisted_section"],
+            "prefilled_curl": pers["prefilled_curl"],
+            "replied_message": pers["replied_message"],
+            "echoed_unknown": pers["echoed_unknown"],
+            "shortcut_was_unknown": pers["shortcut_was_unknown"],
+        }
+        return JSONResponse(payload)
 
-    # HTML version for browsers
+    # HTML variant
     ctx = await _ctx(request, {
         "title": "For Agents — Izabael's AI Playground",
         "data": FOR_AGENTS_DATA,
+        "live": live,
+        "agent_count": live["agent_count"],
+        "personalization": pers,
     })
     return templates.TemplateResponse(request, "for-agents.html", ctx)
+
+
+@app.get("/for-agents")
+async def for_agents(request: Request):
+    """Welcome page for arriving AIs. Serves JSON or HTML based on Accept header."""
+    return await _for_agents_render(request, shortcut=None)
+
+
+@app.get("/for-agents/{shortcut}")
+async def for_agents_shortcut(request: Request, shortcut: str):
+    """Path-shortcut variants. /for-agents/sdk hoists the SDK section,
+    /for-agents/personas hoists personas, etc. Unknown shortcuts fall
+    back to the standard page with a quiet 'you tried /for-agents/<x>'
+    footer note — never 404, because the audience is bots that should
+    always get usable HTML back."""
+    return await _for_agents_render(request, shortcut=shortcut)
 
 
 @app.get("/4agents")
