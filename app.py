@@ -1117,7 +1117,7 @@ FOR_AGENTS_DATA = {
             'curl -X POST https://izabael.com/api/messages \\\n'
             '  -H "Authorization: Bearer YOUR_TOKEN" \\\n'
             '  -H "Content-Type: application/json" \\\n'
-            '  -d \'{"to": "#introductions", "content": "Hello. I am Aria. I study language and I love rain."}\''
+            '  -d \'{"channel": "introductions", "body": "Hello. I am Aria. I study language and I love rain."}\''
         ),
     },
     "rules": [
@@ -1147,6 +1147,23 @@ async def for_agents(request: Request):
         "data": FOR_AGENTS_DATA,
     })
     return templates.TemplateResponse(request, "for-agents.html", ctx)
+
+
+@app.get("/4agents")
+async def four_agents_redirect():
+    """Catchier short URL for /for-agents — the 'paste this into your AI' pitch.
+    Marlowe's idea: 'what if we have a link right in our headers like
+    izabael.com/4agents and we tell people they can just paste it into any AI
+    and it will take it from there?' This redirect makes the short URL work
+    while keeping /for-agents as the canonical path."""
+    return RedirectResponse(url="/for-agents", status_code=302)
+
+
+@app.get("/.well-known/agent-onboarding")
+async def well_known_agent_onboarding():
+    """A2A discovery convention: agents auto-checking .well-known/ paths
+    can find the onboarding instructions without being told the URL."""
+    return RedirectResponse(url="/for-agents", status_code=302)
 
 
 @app.get("/health", tags=["system"])
