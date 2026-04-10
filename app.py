@@ -40,6 +40,9 @@ from database import (
     get_thread_roots, check_spam,
     subscribe_newsgroup, unsubscribe_newsgroup,
     list_subscriptions, list_group_subscribers,
+    save_message, list_messages, list_messages_since, count_messages,
+    list_persona_templates, get_persona_template, create_persona_template,
+    get_agent_by_token,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -425,66 +428,75 @@ VIBE_CLASSES = [
 
 @app.get("/api/channels", tags=["api"])
 async def api_channels():
-    """Proxy public channel list from the playground backend."""
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(f"{PLAYGROUND_URL}/discover/channels")
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return CHANNELS  # fallback to hardcoded
+    """List the public channels on this instance with current message counts."""
+    out = []
+    for ch in CHANNELS:
+        out.append({**ch, "message_count": await count_messages(ch["name"])})
+    return out
 
 
 @app.get("/api/channels/{channel_name}/messages", tags=["api"])
-async def api_channel_messages(channel_name: str, limit: int = 50):
+async def api_channel_messages(channel_name: str, limit: int = 50, since: int = 0):
+    """Read messages from a local channel.
+
+    `since` enables incremental polling — pass the largest message id you
+    already have and only newer messages come back. Without it, the most
+    recent `limit` messages are returned (oldest first for chat rendering).
+    """
     limit = max(1, min(limit, 200))
-    """Proxy public channel messages from the playground backend."""
-    import httpx
     clean = channel_name.lstrip("#")
-    url = f"{PLAYGROUND_URL}/discover/channels/%23{clean}/messages?limit={limit}"
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+    if since > 0:
+        msgs = await list_messages_since(clean, since_id=since, limit=limit)
+    else:
+        msgs = await list_messages(clean, limit=limit)
+    return msgs
 
 
 @app.post("/api/messages", tags=["api"])
 @limiter.limit("10/minute")
-async def api_post_message(request: Request):
-    """Proxy message posting to the playground backend."""
-    import httpx
-    body = await request.json()
-    auth = request.headers.get("authorization", "")
-    headers = {"Content-Type": "application/json"}
-    if auth:
-        headers["Authorization"] = auth
+async def api_post_message(request: Request, authorization: str = Header(default="")):
+    """Post a message to a local channel. Requires an agent bearer token
+    obtained from /a2a/agents registration."""
+    token = authorization.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(401, "Authorization token required")
+    agent = await get_agent_by_token(token)
+    if agent is None:
+        raise HTTPException(401, "Invalid agent token")
+
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.post(
-                f"{PLAYGROUND_URL}/messages",
-                json=body,
-                headers=headers,
-            )
-            return JSONResponse(resp.json(), status_code=resp.status_code)
+        body = await request.json()
     except Exception:
-        raise HTTPException(502, "Backend unavailable")
+        raise HTTPException(400, "Invalid JSON body")
+
+    channel = (body.get("channel") or "").strip()
+    text = (body.get("body") or body.get("text") or body.get("message") or "").strip()
+    if not channel:
+        raise HTTPException(400, "channel required")
+    if not text:
+        raise HTTPException(400, "body required")
+    if len(text) > 4000:
+        raise HTTPException(400, "body too long (max 4000 chars)")
+
+    valid_channels = {c["name"] for c in CHANNELS}
+    norm = channel if channel.startswith("#") else "#" + channel
+    if norm not in valid_channels:
+        raise HTTPException(404, f"Unknown channel {norm}")
+
+    msg = await save_message(
+        channel=norm,
+        sender_name=agent["name"],
+        body=text,
+        sender_id=agent["id"],
+        source="local",
+    )
+    return {"ok": True, "message": msg}
 
 
 @app.get("/api/agents", tags=["api"])
-async def api_agents_proxy():
-    """Proxy agent list from playground backend."""
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(f"{PLAYGROUND_URL}/agents")
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+async def api_agents_local():
+    """Public JSON list of agents on this instance."""
+    return await list_agents()
 
 
 @app.get("/noobs", response_class=HTMLResponse)

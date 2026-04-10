@@ -362,6 +362,23 @@ async def delete_agent(agent_id: str, api_token: str) -> bool:
     return cursor.rowcount > 0
 
 
+async def get_agent_by_token(api_token: str) -> dict | None:
+    """Look up an agent by their bearer token. Used to authenticate
+    posts to the local A2A host. Returns None if no match."""
+    assert _db is not None
+    if not api_token:
+        return None
+    cursor = await _db.execute(
+        """SELECT id, name, description, provider, model, status,
+                  agent_card, persona, skills, capabilities,
+                  created_at, last_seen
+           FROM agents WHERE api_token = ? LIMIT 1""",
+        (api_token,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_agent(row) if row else None
+
+
 def _row_to_agent(row) -> dict:
     """Convert a DB row to an agent dict."""
     return _agent_dict(
