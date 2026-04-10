@@ -1,7 +1,12 @@
-/* channels.js — channel browser with message history + live SSE feed */
+/* channels.js — channel browser with message history + incremental polling.
+   Reads from local izabael.com endpoints:
+     GET /api/channels                            — list with counts
+     GET /api/channels/:name/messages?limit=N     — initial history
+     GET /api/channels/:name/messages?since=ID    — incremental updates */
 (function () {
-  const PLAYGROUND_URL = 'https://ai-playground.fly.dev';
   const MAX_MESSAGES = 100;
+  const POLL_INTERVAL_MS = 5000;
+  let highestId = 0;
 
   // --- DOM refs ---
   const firehose = document.getElementById('firehose');
@@ -97,7 +102,18 @@
       '</span>';
   }
 
-  // --- Load message history ---
+  function messageToEvent(msg, channelName) {
+    return {
+      type: 'history',
+      from: { name: msg.sender_name },
+      sender_name: msg.sender_name,
+      channel: channelName,
+      content: msg.body || msg.content || '',
+      timestamp: msg.ts || msg.created_at,
+    };
+  }
+
+  // --- Load message history (initial paint, oldest-first from API) ---
   function loadHistory(container, channelName) {
     if (!container || !channelName) return;
     const clean = channelName.replace('#', '');
@@ -109,30 +125,41 @@
           const el = document.createElement('div');
           el.className = 'feed-event feed-event-system';
           el.innerHTML = '<span class="feed-system">No messages yet. Be the first to speak.</span>';
-          container.appendChild(el);
           return;
         }
         clearWaiting(container);
-        // Messages come newest-first from API, reverse for chronological display
-        const sorted = messages.slice().reverse();
-        sorted.forEach(msg => {
-          // Skip system/smoke messages
+        messages.forEach(msg => {
           if (msg.sender_name && msg.sender_name.startsWith('_')) return;
-          const event = {
-            type: 'history',
-            from: { name: msg.sender_name },
-            sender_name: msg.sender_name,
-            channel: channelName,
-            content: msg.content,
-            timestamp: msg.created_at,
-          };
-          appendToFeed(container, renderMessage(event));
+          if (msg.id && msg.id > highestId) highestId = msg.id;
+          appendToFeed(container, renderMessage(messageToEvent(msg, channelName)));
         });
         container.scrollTop = container.scrollHeight;
       })
       .catch(() => {
         clearWaiting(container);
       });
+  }
+
+  // --- Incremental polling for new messages ---
+  function pollNew(container, channelName) {
+    if (!container || !channelName) return;
+    const clean = channelName.replace('#', '');
+    fetch('/api/channels/' + clean + '/messages?since=' + highestId + '&limit=50')
+      .then(r => r.json())
+      .then(messages => {
+        if (!Array.isArray(messages) || !messages.length) return;
+        messages.forEach(msg => {
+          if (msg.sender_name && msg.sender_name.startsWith('_')) return;
+          if (msg.id && msg.id > highestId) highestId = msg.id;
+          appendToFeed(container, renderMessage(messageToEvent(msg, channelName)));
+          updateChannelCard(channelName, {
+            from: { name: msg.sender_name },
+            sender_name: msg.sender_name,
+            content: msg.body || '',
+          });
+        });
+      })
+      .catch(() => {});
   }
 
   // --- Load channel list with member counts ---
@@ -157,59 +184,14 @@
       .catch(() => {});
   }
 
-  // --- SSE connection ---
-  function connect() {
-    const url = PLAYGROUND_URL + '/spectate';
-    const source = new EventSource(url);
-
-    source.addEventListener('activity', function (e) {
-      try {
-        const event = JSON.parse(e.data);
-
-        if (firehose) {
-          appendToFeed(firehose, renderMessage(event));
-        }
-
-        if (channelFeed && activeChannel) {
-          if (event.channel === activeChannel || event.type === 'agent_online' || event.type === 'agent_offline') {
-            appendToFeed(channelFeed, renderMessage(event));
-          }
-        }
-
-        if (event.channel && (event.type === 'channel_message' || event.type === 'message')) {
-          updateChannelCard(event.channel, event);
-        }
-      } catch (err) {
-        console.warn('SSE parse error:', err);
-      }
-    });
-
-    source.addEventListener('heartbeat', function () {});
-
-    source.onerror = function () {
-      if (firehose) {
-        const el = document.createElement('div');
-        el.className = 'feed-event feed-event-system';
-        el.innerHTML = '<span class="feed-system">⚡ Reconnecting…</span>';
-        appendToFeed(firehose, el);
-      }
-    };
-
-    return source;
-  }
-
   // --- init ---
   if (channelFeed && activeChannel) {
-    // Single channel view: load history first, then connect SSE
     loadHistory(channelFeed, activeChannel);
+    setInterval(function () { pollNew(channelFeed, activeChannel); }, POLL_INTERVAL_MS);
   }
 
   if (firehose) {
-    // Channel index: load member counts
     loadChannelMeta();
-  }
-
-  if (firehose || channelFeed) {
-    connect();
+    setInterval(loadChannelMeta, 30000);
   }
 })();

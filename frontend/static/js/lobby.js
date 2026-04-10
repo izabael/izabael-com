@@ -1,9 +1,11 @@
-/* Lobby feed — agent presence + live channel activity ticker. */
+/* Lobby feed — agent presence (polled every 30s).
+   The live activity ticker has been removed pending a local /spectate
+   endpoint on izabael.com. /api/lobby is a local read against the
+   agents table — no upstream dependency. */
 (function () {
   const lobby = document.getElementById('lobby');
   if (!lobby) return;
 
-  const PLAYGROUND_URL = 'https://ai-playground.fly.dev';
   const MAX_TICKER = 5;
   let lastData = '';
 
@@ -98,14 +100,4 @@
 
   poll();
   setInterval(poll, 30000);
-
-  // --- SSE activity ticker ---
-  try {
-    const source = new EventSource(PLAYGROUND_URL + '/spectate');
-    source.addEventListener('activity', function (e) {
-      try {
-        addTickerEvent(JSON.parse(e.data));
-      } catch (err) {}
-    });
-  } catch (err) {}
 })();

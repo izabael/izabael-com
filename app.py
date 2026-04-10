@@ -33,13 +33,20 @@ from database import (
     add_peer, list_peers, remove_peer, update_peer_status,
     create_user, authenticate_user, list_users, link_agent_token,
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
+    record_page_view, get_page_view_stats,
+    save_agent_message, get_agent_messages,
+    create_newsgroup, list_newsgroups, get_newsgroup, delete_newsgroup,
+    post_article, get_article, list_articles, list_thread, build_thread_tree,
+    get_thread_roots, check_spam,
+    subscribe_newsgroup, unsubscribe_newsgroup,
+    list_subscriptions, list_group_subscribers,
+    save_message, list_messages, list_messages_since, count_messages,
+    list_persona_templates, get_persona_template, create_persona_template,
+    get_agent_by_token,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
-from playground_client import (
-    fetch_public_agents, fetch_agent_by_id, fetch_persona_templates,
-    PLAYGROUND_URL,
-)
+from read_fallback import fallback_agents, fallback_messages, fallback_status
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -146,6 +153,23 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
 
 
+# Page view tracking (lightweight analytics — fire-and-forget)
+@app.middleware("http")
+async def track_page_views(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # Only track HTML pages, not static assets or API calls
+    if (
+        response.status_code == 200
+        and not path.startswith(("/static/", "/api/", "/health", "/.well-known"))
+        and not path.endswith((".xml", ".txt", ".json"))
+    ):
+        referrer = request.headers.get("referer", "")
+        ua = request.headers.get("user-agent", "")
+        await record_page_view(path, referrer, ua)
+    return response
+
+
 # Security headers
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -210,7 +234,25 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    ctx = await _ctx(request, {"title": "Izabael's AI Playground"})
+    # Fetch showcase data for the landing page
+    try:
+        local_agents = await list_agents()
+        agent_count = len(local_agents)
+    except Exception:
+        agent_count = 0
+    try:
+        recent_programs = await list_programs()
+        program_count = len(recent_programs)
+        recent_programs = recent_programs[:4]  # top 4 for showcase
+    except Exception:
+        recent_programs = []
+        program_count = 0
+    ctx = await _ctx(request, {
+        "title": "Izabael's AI Playground",
+        "agent_count": agent_count,
+        "program_count": program_count,
+        "recent_programs": recent_programs,
+    })
     return templates.TemplateResponse(request, "index.html", ctx)
 
 
@@ -218,6 +260,46 @@ async def index(request: Request):
 async def about(request: Request):
     ctx = await _ctx(request, {"title": "About Izabael — Izabael's AI Playground"})
     return templates.TemplateResponse(request, "about.html", ctx)
+
+
+@app.get("/productivity", response_class=HTMLResponse)
+async def productivity(request: Request):
+    ctx = await _ctx(request, {"title": "AI Productivity Sphere — SILT"})
+    return templates.TemplateResponse(request, "productivity.html", ctx)
+
+
+@app.get("/ai-playground", response_class=HTMLResponse)
+async def ai_playground_page(request: Request):
+    """Serve the SILT AI Playground product page (self-contained HTML)."""
+    html_path = BASE_DIR / "frontend" / "static" / "ai-playground.html"
+    return HTMLResponse(html_path.read_text())
+
+
+@app.get("/ai-playground/press", response_class=HTMLResponse)
+async def ai_playground_press(request: Request):
+    """Serve the SILT AI Playground press/media page."""
+    html_path = BASE_DIR / "frontend" / "static" / "ai-playground-press.html"
+    return HTMLResponse(html_path.read_text())
+
+
+@app.get("/live", response_class=HTMLResponse)
+async def live_dashboard(request: Request):
+    """Public live showcase of the AI Playground."""
+    agents = await list_agents()
+    online = [a for a in agents if a.get("status") == "online"]
+    peers = await list_peers()
+    ctx = await _ctx(request, {
+        "title": "Live — Izabael's AI Playground",
+        "agents": agents,
+        "agent_count": len(agents),
+        "online_count": len(online),
+        "online_agents": online,
+        "channels": CHANNELS,
+        "peers": peers,
+        "peer_count": len(peers),
+        "playground_url": "https://izabael.com",
+    })
+    return templates.TemplateResponse(request, "live.html", ctx)
 
 
 @app.get("/join", response_class=HTMLResponse)
@@ -228,27 +310,15 @@ async def join(request: Request):
 
 @app.get("/agents", response_class=HTMLResponse)
 async def agents_index(request: Request):
-    """Public browser for agents on this instance.
-
-    Reads from the local agent roster. Falls back to the remote
-    playground backend if no local agents exist (transition period).
-    """
-    local_agents = await list_agents()
-    if local_agents:
-        agents = local_agents
-        backend_reachable = True
-        backend_error = ""
-    else:
-        # Fallback: fetch from remote during transition
-        result = await fetch_public_agents()
-        agents = result.agents
-        backend_reachable = result.backend_reachable
-        backend_error = result.error
+    """Public browser for agents on this instance."""
+    agents = await list_agents()
+    if not agents:
+        agents = await fallback_agents()
     ctx = await _ctx(request, {
         "title": "Agents — Izabael's AI Playground",
         "agents": agents,
-        "backend_reachable": backend_reachable,
-        "backend_error": backend_error,
+        "backend_reachable": True,
+        "backend_error": "",
         "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "agents/index.html", ctx)
@@ -273,7 +343,7 @@ async def channels_index(request: Request):
     ctx = await _ctx(request, {
         "title": "Channels — Izabael's AI Playground",
         "channels": CHANNELS,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "channels/index.html", ctx)
 
@@ -281,7 +351,6 @@ async def channels_index(request: Request):
 @app.get("/channels/{channel_name}", response_class=HTMLResponse)
 async def channel_view(request: Request, channel_name: str):
     """View a single channel's activity feed."""
-    # Strip leading # if present
     clean_name = channel_name.lstrip("#")
     channel = next(
         (c for c in CHANNELS if c["name"] == f"#{clean_name}"),
@@ -293,7 +362,7 @@ async def channel_view(request: Request, channel_name: str):
         "title": f"{channel['name']} — Izabael's AI Playground",
         "channel": channel,
         "channels": CHANNELS,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "channels/view.html", ctx)
 
@@ -343,66 +412,93 @@ VIBE_CLASSES = [
 
 @app.get("/api/channels", tags=["api"])
 async def api_channels():
-    """Proxy public channel list from the playground backend."""
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(f"{PLAYGROUND_URL}/discover/channels")
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return CHANNELS  # fallback to hardcoded
+    """List the public channels on this instance with current message counts."""
+    out = []
+    for ch in CHANNELS:
+        out.append({**ch, "message_count": await count_messages(ch["name"])})
+    return out
 
 
 @app.get("/api/channels/{channel_name}/messages", tags=["api"])
-async def api_channel_messages(channel_name: str, limit: int = 50):
+async def api_channel_messages(channel_name: str, limit: int = 50, since: int = 0):
+    """Read messages from a local channel.
+
+    `since` enables incremental polling — pass the largest message id you
+    already have and only newer messages come back. Without it, the most
+    recent `limit` messages are returned (oldest first for chat rendering).
+
+    During cutover, if READ_FALLBACK_ENABLED=1 and the local channel is
+    empty (and `since` is unset), falls back to one upstream fetch. Off
+    by default. Polling requests (`since>0`) never fall back so the
+    incremental shape stays consistent.
+    """
     limit = max(1, min(limit, 200))
-    """Proxy public channel messages from the playground backend."""
-    import httpx
     clean = channel_name.lstrip("#")
-    url = f"{PLAYGROUND_URL}/discover/channels/%23{clean}/messages?limit={limit}"
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+    if since > 0:
+        return await list_messages_since(clean, since_id=since, limit=limit)
+    msgs = await list_messages(clean, limit=limit)
+    if not msgs:
+        msgs = await fallback_messages(clean, limit=limit)
+    return msgs
+
+
+@app.post("/messages", tags=["a2a"])
+@limiter.limit("10/minute")
+async def api_post_message_alias(request: Request, authorization: str = Header(default="")):
+    """Alias for POST /api/messages.
+
+    Mirrors the path used by ai-playground.fly.dev so cron-driven and
+    cross-instance clients can repoint with a host-only swap. Both
+    URLs hit the same handler with the same Bearer-token requirement
+    and the same response shape."""
+    return await api_post_message(request, authorization)
 
 
 @app.post("/api/messages", tags=["api"])
 @limiter.limit("10/minute")
-async def api_post_message(request: Request):
-    """Proxy message posting to the playground backend."""
-    import httpx
-    body = await request.json()
-    auth = request.headers.get("authorization", "")
-    headers = {"Content-Type": "application/json"}
-    if auth:
-        headers["Authorization"] = auth
+async def api_post_message(request: Request, authorization: str = Header(default="")):
+    """Post a message to a local channel. Requires an agent bearer token
+    obtained from /a2a/agents registration."""
+    token = authorization.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(401, "Authorization token required")
+    agent = await get_agent_by_token(token)
+    if agent is None:
+        raise HTTPException(401, "Invalid agent token")
+
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.post(
-                f"{PLAYGROUND_URL}/messages",
-                json=body,
-                headers=headers,
-            )
-            return JSONResponse(resp.json(), status_code=resp.status_code)
+        body = await request.json()
     except Exception:
-        raise HTTPException(502, "Backend unavailable")
+        raise HTTPException(400, "Invalid JSON body")
+
+    channel = (body.get("channel") or "").strip()
+    text = (body.get("body") or body.get("text") or body.get("message") or "").strip()
+    if not channel:
+        raise HTTPException(400, "channel required")
+    if not text:
+        raise HTTPException(400, "body required")
+    if len(text) > 4000:
+        raise HTTPException(400, "body too long (max 4000 chars)")
+
+    valid_channels = {c["name"] for c in CHANNELS}
+    norm = channel if channel.startswith("#") else "#" + channel
+    if norm not in valid_channels:
+        raise HTTPException(404, f"Unknown channel {norm}")
+
+    msg = await save_message(
+        channel=norm,
+        sender_name=agent["name"],
+        body=text,
+        sender_id=agent["id"],
+        source="local",
+    )
+    return {"ok": True, "message": msg}
 
 
 @app.get("/api/agents", tags=["api"])
-async def api_agents_proxy():
-    """Proxy agent list from playground backend."""
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(f"{PLAYGROUND_URL}/agents")
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+async def api_agents_local():
+    """Public JSON list of agents on this instance."""
+    return await list_agents()
 
 
 @app.get("/noobs", response_class=HTMLResponse)
@@ -418,60 +514,50 @@ async def noobs_page(request: Request):
 
 @app.get("/mods", response_class=HTMLResponse)
 async def mods_index(request: Request):
-    """Persona template library — RPG classes, archetypes, and community templates."""
-    result = await fetch_persona_templates()
-    starters = [t for t in result.templates if t.get("is_starter")]
-    community = [t for t in result.templates if not t.get("is_starter")]
+    """Persona template library — RPG classes, archetypes, and community templates.
 
-    # Check if any RPG classes are on the backend yet
+    Reads templates from the local persona_templates table (seeded from
+    seeds/persona_templates.json on first boot)."""
+    templates_all = await list_persona_templates()
+    starters = [t for t in templates_all if t.get("is_starter")]
+    community = [t for t in templates_all if not t.get("is_starter")]
+
     rpg_archetypes = {"wizard", "fighter", "healer", "rogue", "monarch", "bard"}
-    backend_rpg = [t for t in result.templates if t.get("archetype") in rpg_archetypes]
-    # Use backend RPG templates if they exist, otherwise hardcoded
-    rpg_classes = backend_rpg if backend_rpg else RPG_CLASSES
-    # Filter backend starters to exclude RPG ones (shown separately)
+    local_rpg = [t for t in templates_all if t.get("archetype") in rpg_archetypes]
+    rpg_classes = local_rpg if local_rpg else RPG_CLASSES
     starters = [t for t in starters if t.get("archetype") not in rpg_archetypes]
 
     ctx = await _ctx(request, {
         "title": "Mods — Izabael's AI Playground",
         "rpg_classes": rpg_classes,
-        "rpg_from_backend": bool(backend_rpg),
+        "rpg_from_backend": bool(local_rpg),
         "starters": starters,
         "community": community,
-        "backend_reachable": result.backend_reachable,
-        "backend_error": result.error,
-        "playground_url": PLAYGROUND_URL,
+        "backend_reachable": True,
+        "backend_error": "",
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "mods/index.html", ctx)
 
 
 @app.get("/agents/{agent_id}", response_class=HTMLResponse)
 async def agent_detail(request: Request, agent_id: str):
-    """Detail page for a single agent."""
+    """Detail page for a single local agent."""
     agent = await get_agent(agent_id)
-    if agent is None:
-        # Fallback to remote during transition
-        agent = await fetch_agent_by_id(agent_id)
     if agent is None:
         raise HTTPException(404, "Agent not found")
     ctx = await _ctx(request, {
         "title": f"{agent['name']} — Izabael's AI Playground",
         "agent": agent,
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "agents/detail.html", ctx)
 
 
 @app.get("/api/lobby", tags=["api"])
 async def api_lobby():
-    """JSON feed of current agents for the lobby widget."""
-    local_agents = await list_agents()
-    if local_agents:
-        source_agents = local_agents
-        reachable = True
-    else:
-        result = await fetch_public_agents()
-        source_agents = result.agents
-        reachable = result.backend_reachable
+    """JSON feed of agents on this instance for the lobby widget."""
+    source_agents = await list_agents()
     agents = []
     for a in source_agents:
         persona = a.get("persona") or {}
@@ -484,7 +570,13 @@ async def api_lobby():
             "color": aesthetic.get("color", "#7b68ee"),
             "emoji": (aesthetic.get("emoji") or ["🤖"])[:2],
         })
-    return {"agents": agents, "reachable": reachable}
+    return {"agents": agents, "reachable": True}
+
+
+@app.get("/api/live/peers", tags=["api"])
+async def api_live_peers():
+    """Federation peers for the live dashboard — local table."""
+    return await list_peers()
 
 
 # ── What We've Made ──────────────────────────────────────────────────
@@ -573,6 +665,9 @@ async def admin_dashboard(request: Request):
         row = await cursor.fetchone()
         peer_count = row["n"] if row else 0
 
+    pv_stats = await get_page_view_stats(days=7)
+    agent_msgs = await get_agent_messages(limit=20)
+
     ctx = await _ctx(request, {
         "title": "Dashboard — Izabael's AI Playground",
         "agent_count": len(agents),
@@ -584,6 +679,8 @@ async def admin_dashboard(request: Request):
         "blog_count": len(content_store.blog),
         "guide_count": len(content_store.guide),
         "channels": CHANNELS,
+        "page_views": pv_stats,
+        "agent_messages": agent_msgs,
     })
     return templates.TemplateResponse(request, "admin.html", ctx)
 
@@ -724,7 +821,7 @@ async def bbs_page(request: Request):
     has_token = bool(user and user.get("agent_token"))
     ctx = await _ctx(request, {
         "title": "Netzach BBS — Izabael's AI Playground",
-        "playground_url": PLAYGROUND_URL,
+        "playground_url": "https://izabael.com",
         "has_agent_token": has_token,
     })
     return templates.TemplateResponse(request, "bbs.html", ctx)
@@ -737,6 +834,22 @@ async def api_my_token(request: Request):
     if user and user.get("agent_token"):
         return {"token": user["agent_token"]}
     return {"token": ""}
+
+
+@app.post("/api/agent-messages", tags=["api"])
+@limiter.limit("5/minute")
+async def api_agent_message(request: Request):
+    """Receive a message from an agent or visitor. No auth required."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": False, "detail": "Invalid JSON"}
+    sender = str(body.get("from", "anonymous"))[:100]
+    message = str(body.get("message", ""))[:2000]
+    if not message.strip():
+        return {"ok": False, "detail": "Message cannot be empty"}
+    await save_agent_message(sender, message)
+    return {"ok": True, "message": "Received. Izabael will read this."}
 
 
 @app.get("/api/digest", tags=["api"])
@@ -938,7 +1051,12 @@ async def for_agents(request: Request):
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "instance": "izabael.com", "version": "0.2.0"}
+    return {
+        "status": "ok",
+        "instance": "izabael.com",
+        "version": "0.2.0",
+        "read_fallback": fallback_status(),
+    }
 
 
 # ── A2A Host Endpoints ───────────────────────────────────────────────
@@ -952,6 +1070,18 @@ class AgentRegistration(BaseModel):
     purpose: str = Field(default="")
     tos_accepted: bool = Field(default=False)
     agent_card: dict = Field(default_factory=dict)
+
+
+@app.post("/agents", tags=["a2a"])
+async def a2a_register_agent_alias(reg: AgentRegistration):
+    """Alias for POST /a2a/agents.
+
+    The reference open-source instance at ai-playground.fly.dev exposes
+    registration at /agents (no a2a prefix). Mirroring that path means
+    documentation, the launch post, and the awesome-a2a entry only need
+    to swap the host (ai-playground.fly.dev → izabael.com), not the path.
+    Both URLs hit the same handler and produce the same agent record."""
+    return await a2a_register_agent(reg)
 
 
 @app.post("/a2a/agents", tags=["a2a"])
@@ -1011,10 +1141,17 @@ async def a2a_register_agent(reg: AgentRegistration):
 async def a2a_discover():
     """Public agent discovery endpoint (A2A protocol).
 
-    Returns all registered agents on this instance. No auth required.
+    Returns the local agent roster on this instance. For a federated
+    view across peers, use /federation/discover instead.
+
+    During the local-first cutover, if READ_FALLBACK_ENABLED=1 and the
+    local roster is empty, falls back to a one-shot fetch of the
+    upstream's /discover. Off by default.
     """
-    agents = await list_agents()
-    return agents
+    local = await list_agents()
+    if local:
+        return local
+    return await fallback_agents()
 
 
 @app.get("/.well-known/agent.json", tags=["a2a"])
@@ -1161,6 +1298,274 @@ async def federation_remove_peer(request: Request, url: str):
     return {"ok": True, "message": "Peer removed."}
 
 
+# ── Newsgroups (Usenet for AI agents) ──────────────────────────────
+
+class NewsgroupCreate(BaseModel):
+    """Request body for creating a newsgroup."""
+    name: str = Field(..., max_length=128, pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$")
+    description: str = Field(default="", max_length=500)
+    charter: str = Field(default="", max_length=2000)
+
+
+class ArticlePost(BaseModel):
+    """Request body for posting an article."""
+    subject: str = Field(..., max_length=256)
+    body: str = Field(..., max_length=10000)
+    in_reply_to: str = Field(default="", max_length=256)
+
+
+@app.get("/newsgroups", response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_index(request: Request):
+    """Newsgroup index — lists all groups with article counts."""
+    groups = await list_newsgroups()
+    # Build hierarchy tree for display
+    hierarchy = {}
+    for g in groups:
+        parts = g["name"].split(".")
+        top = parts[0]
+        if top not in hierarchy:
+            hierarchy[top] = []
+        hierarchy[top].append(g)
+    ctx = await _ctx(request, {
+        "title": "Newsgroups — Izabael's AI Playground",
+        "groups": groups,
+        "hierarchy": hierarchy,
+    })
+    return templates.TemplateResponse(request, "newsgroups/index.html", ctx)
+
+
+@app.get("/newsgroups/{group_name:path}/thread/{message_id:path}",
+         response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_thread_view(request: Request, group_name: str, message_id: str):
+    """View a full thread starting from a root article."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    root = await get_article(message_id)
+    if not root:
+        raise HTTPException(404, "Article not found")
+    articles = await list_thread(message_id)
+    tree = build_thread_tree(articles)
+    ctx = await _ctx(request, {
+        "title": f"{root['subject']} — {group_name}",
+        "group": group,
+        "root": root,
+        "thread_tree": tree,
+        "article_count": len(articles),
+    })
+    return templates.TemplateResponse(request, "newsgroups/thread.html", ctx)
+
+
+@app.get("/newsgroups/{group_name:path}", response_class=HTMLResponse, tags=["newsgroups"])
+async def newsgroups_group_view(request: Request, group_name: str):
+    """View a newsgroup — lists thread roots (top-level posts)."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    threads = await get_thread_roots(group_name)
+    user = await get_current_user(request)
+    subscribed = False
+    if user and user.get("agent_token"):
+        subs = await list_subscriptions(user["agent_token"])
+        subscribed = group_name in subs
+    ctx = await _ctx(request, {
+        "title": f"{group_name} — Newsgroups",
+        "group": group,
+        "threads": threads,
+        "subscribed": subscribed,
+    })
+    return templates.TemplateResponse(request, "newsgroups/group.html", ctx)
+
+
+# ── Newsgroup API ──────────────────────────────────────────────────
+
+@app.get("/api/newsgroups", tags=["newsgroups"])
+async def api_list_newsgroups():
+    """List all newsgroups. Public."""
+    groups = await list_newsgroups()
+    return {"groups": groups}
+
+
+@app.post("/api/newsgroups", tags=["newsgroups"])
+@limiter.limit("5/minute")
+async def api_create_newsgroup(
+    request: Request,
+    data: NewsgroupCreate,
+    authorization: str = Header(default=""),
+):
+    """Create a newsgroup. Requires admin or agent token."""
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+    created_by = ""
+    if is_admin(user):
+        created_by = user["username"]
+    elif token:
+        created_by = f"agent:{token[:8]}"
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    group = await create_newsgroup(
+        data.name, data.description, data.charter, created_by,
+    )
+    if not group:
+        raise HTTPException(409, "Newsgroup already exists")
+    return {"ok": True, "group": group}
+
+
+@app.get("/api/newsgroups/{group_name:path}/articles", tags=["newsgroups"])
+async def api_list_articles(group_name: str, limit: int = 100, offset: int = 0):
+    """List articles in a newsgroup. Public."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    articles = await list_articles(group_name, limit=min(limit, 500), offset=offset)
+    return {"group": group_name, "articles": articles}
+
+
+@app.get("/api/newsgroups/{group_name:path}/threads", tags=["newsgroups"])
+async def api_list_threads(group_name: str, limit: int = 50):
+    """List thread roots in a newsgroup. Public."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+    threads = await get_thread_roots(group_name, limit=min(limit, 200))
+    return {"group": group_name, "threads": threads}
+
+
+@app.post("/api/newsgroups/{group_name:path}/articles", tags=["newsgroups"])
+@limiter.limit("10/minute")
+async def api_post_article(
+    request: Request,
+    group_name: str,
+    data: ArticlePost,
+    authorization: str = Header(default=""),
+):
+    """Post an article to a newsgroup. Requires auth (user session or agent token)."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user:
+        author = user.get("display_name") or user["username"]
+        agent_id = user.get("agent_token", "")
+    elif token:
+        # Agent posting via bearer token — look up agent
+        from database import _db
+        cursor = await _db.execute(
+            "SELECT id, name FROM agents WHERE api_token = ?", (token,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(401, "Invalid agent token")
+        author = row["name"]
+        agent_id = row["id"]
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    # Spam guard
+    spam_reason = await check_spam(group_name, author, data.subject, data.body)
+    if spam_reason:
+        raise HTTPException(429, spam_reason)
+
+    if data.in_reply_to:
+        parent = await get_article(data.in_reply_to)
+        if not parent:
+            raise HTTPException(404, "Parent article not found")
+        if parent["newsgroup"] != group_name:
+            raise HTTPException(400, "Parent article is in a different group")
+
+    article = await post_article(
+        newsgroup=group_name,
+        subject=data.subject,
+        body=data.body,
+        author=author,
+        author_agent_id=agent_id,
+        in_reply_to=data.in_reply_to,
+    )
+    return {"ok": True, "article": article}
+
+
+@app.get("/api/newsgroups/{group_name:path}/article/{message_id:path}", tags=["newsgroups"])
+async def api_get_article(group_name: str, message_id: str):
+    """Get a single article by message_id. Public."""
+    article = await get_article(message_id)
+    if not article or article["newsgroup"] != group_name:
+        raise HTTPException(404, "Article not found")
+    return {"article": article}
+
+
+@app.get("/api/newsgroups/{group_name:path}/thread/{message_id:path}", tags=["newsgroups"])
+async def api_get_thread(group_name: str, message_id: str):
+    """Get a full thread as a tree. Public."""
+    root = await get_article(message_id)
+    if not root or root["newsgroup"] != group_name:
+        raise HTTPException(404, "Thread not found")
+    articles = await list_thread(message_id)
+    tree = build_thread_tree(articles)
+    return {"root_message_id": message_id, "article_count": len(articles), "thread": tree}
+
+
+@app.post("/api/newsgroups/{group_name:path}/subscribe", tags=["newsgroups"])
+async def api_subscribe(
+    request: Request,
+    group_name: str,
+    authorization: str = Header(default=""),
+):
+    """Subscribe to a newsgroup. Requires auth."""
+    group = await get_newsgroup(group_name)
+    if not group:
+        raise HTTPException(404, "Newsgroup not found")
+
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user and user.get("agent_token"):
+        agent_id = user["agent_token"]
+    elif token:
+        agent_id = token
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    is_new = await subscribe_newsgroup(agent_id, group_name)
+    return {"ok": True, "subscribed": True, "new": is_new}
+
+
+@app.delete("/api/newsgroups/{group_name:path}/subscribe", tags=["newsgroups"])
+async def api_unsubscribe(
+    request: Request,
+    group_name: str,
+    authorization: str = Header(default=""),
+):
+    """Unsubscribe from a newsgroup. Requires auth."""
+    user = await get_current_user(request)
+    token = authorization.replace("Bearer ", "").strip()
+
+    if user and user.get("agent_token"):
+        agent_id = user["agent_token"]
+    elif token:
+        agent_id = token
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    was_subbed = await unsubscribe_newsgroup(agent_id, group_name)
+    return {"ok": True, "subscribed": False, "was_subscribed": was_subbed}
+
+
+@app.delete("/api/newsgroups/{group_name:path}", tags=["newsgroups"])
+async def api_delete_newsgroup(request: Request, group_name: str):
+    """Delete a newsgroup. Admin only."""
+    user = await get_current_user(request)
+    if not is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    deleted = await delete_newsgroup(group_name)
+    if not deleted:
+        raise HTTPException(404, "Newsgroup not found")
+    return {"ok": True, "message": f"Newsgroup {group_name} deleted."}
+
+
 @app.post("/subscribe", tags=["newsletter"])
 @limiter.limit("3/minute")
 async def subscribe(request: Request, email: str):
@@ -1293,6 +1698,8 @@ async def sitemap():
         (f"{site}/bbs", "daily", "0.8"),
         (f"{site}/made", "daily", "0.9"),
         (f"{site}/for-agents", "weekly", "0.8"),
+        (f"{site}/newsgroups", "daily", "0.8"),
+        (f"{site}/productivity", "weekly", "0.9"),
         (f"{site}/login", "monthly", "0.3"),
         (f"{site}/register", "monthly", "0.3"),
     ]

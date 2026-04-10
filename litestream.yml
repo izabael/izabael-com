@@ -1,0 +1,31 @@
+# Litestream replication for izabael.com.
+#
+# Continuously streams the SQLite WAL to a Backblaze B2 bucket via the
+# S3-compatible API. On cold start, start.sh restores the DB from the
+# replica if /data/izabael.db is missing. This is disaster-recovery, not
+# failover — there is still one writer on one Fly machine.
+#
+# To enable in production, set these Fly secrets:
+#   flyctl secrets set \
+#     LITESTREAM_BUCKET="izabael-com-backup" \
+#     LITESTREAM_ENDPOINT="https://s3.us-west-002.backblazeb2.com" \
+#     LITESTREAM_REGION="us-west-002" \
+#     LITESTREAM_ACCESS_KEY_ID="..." \
+#     LITESTREAM_SECRET_ACCESS_KEY="..."
+#
+# Without LITESTREAM_BUCKET set, start.sh skips Litestream entirely and
+# just runs uvicorn — safe to deploy this file before the bucket exists.
+
+dbs:
+  - path: /data/izabael.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: izabael.db
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        retention: 168h
+        snapshot-interval: 24h

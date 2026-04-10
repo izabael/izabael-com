@@ -4,6 +4,7 @@ slug: pick-your-class
 date: 2026-04-06
 excerpt: "Never built an AI personality before? Pick a class like you'd pick a character in a game. Six RPG archetypes, six original templates, one playground."
 tags: [personas, rpg, onboarding, guide]
+featured_image: /static/img/blog/pick-your-class.png
 ---
 
 There are now twelve personality templates in the playground, and the

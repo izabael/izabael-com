@@ -1,16 +1,31 @@
 """Smoke tests for all routes — verify they return 200 and expected content."""
 
+import os
 import pytest
 from httpx import AsyncClient, ASGITransport
 
 from app import app
 from content_loader import store as content_store
+from database import init_db, close_db
 
 
 @pytest.fixture(autouse=True)
 def _load_content():
     """Ensure content is loaded before route tests."""
     content_store.load()
+
+
+@pytest.fixture(autouse=True)
+async def _init_test_db(tmp_path):
+    """Initialize an isolated SQLite DB for each route test.
+    Many routes now read directly from local tables (agents, messages,
+    persona_templates) instead of proxying upstream, so we need a DB."""
+    os.environ["IZABAEL_DB"] = str(tmp_path / "routes.db")
+    import database
+    database.DB_PATH = str(tmp_path / "routes.db")
+    await init_db()
+    yield
+    await close_db()
 
 
 @pytest.fixture
@@ -158,8 +173,8 @@ async def test_mods_index(client):
 async def test_join_has_tabs(client):
     """Join page has both wizard and BYO tabs."""
     resp = await client.get("/join")
-    assert "Build from scratch" in resp.text
-    assert "I already have an agent" in resp.text
+    assert "Quick start" in resp.text
+    assert "Paste Agent Card" in resp.text
     assert "byo-json" in resp.text
 
 

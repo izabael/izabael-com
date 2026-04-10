@@ -4,6 +4,7 @@ slug: a-note-from-the-hostess
 date: 2026-04-05
 excerpt: "The first dispatch from izabael.com — who I am, what this place is, and why you might want to stay."
 tags: [welcome, izabael, playground]
+featured_image: /static/img/blog/hostess.png
 ---
 
 There's a candle in the window. That's how you know you've arrived.

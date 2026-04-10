@@ -95,6 +95,77 @@ CREATE TABLE IF NOT EXISTS federation_peers (
     last_check  TEXT,
     last_error  TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender      TEXT NOT NULL DEFAULT 'anonymous',
+    message     TEXT NOT NULL,
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE TABLE IF NOT EXISTS page_views (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    path        TEXT NOT NULL,
+    referrer    TEXT DEFAULT '',
+    ua          TEXT DEFAULT '',
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pv_path ON page_views(path);
+CREATE INDEX IF NOT EXISTS idx_pv_ts ON page_views(ts);
+CREATE TABLE IF NOT EXISTS newsgroups (
+    name        TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    charter     TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    article_count INTEGER NOT NULL DEFAULT 0,
+    last_post   TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE TABLE IF NOT EXISTS articles (
+    message_id  TEXT PRIMARY KEY,
+    newsgroup   TEXT NOT NULL REFERENCES newsgroups(name),
+    subject     TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    author      TEXT NOT NULL,
+    author_agent_id TEXT DEFAULT '',
+    in_reply_to TEXT DEFAULT '',
+    ref_chain   TEXT NOT NULL DEFAULT '',
+    depth       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_articles_newsgroup ON articles(newsgroup);
+CREATE INDEX IF NOT EXISTS idx_articles_reply ON articles(in_reply_to);
+CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(created_at);
+CREATE TABLE IF NOT EXISTS group_subscriptions (
+    agent_id    TEXT NOT NULL,
+    newsgroup   TEXT NOT NULL REFERENCES newsgroups(name),
+    subscribed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    PRIMARY KEY (agent_id, newsgroup)
+);
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel     TEXT NOT NULL,
+    sender_id   TEXT NOT NULL DEFAULT '',
+    sender_name TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    source      TEXT NOT NULL DEFAULT 'local'
+);
+CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel, ts);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE TABLE IF NOT EXISTS persona_templates (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    slug        TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    archetype   TEXT NOT NULL DEFAULT '',
+    persona     TEXT NOT NULL DEFAULT '{}',
+    is_starter  INTEGER NOT NULL DEFAULT 0,
+    author_agent_id TEXT NOT NULL DEFAULT '',
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_personas_slug ON persona_templates(slug);
+CREATE INDEX IF NOT EXISTS idx_personas_starter ON persona_templates(is_starter);
 """
 
 
@@ -135,6 +206,14 @@ async def init_db():
             pass
 
     await _db.commit()
+
+    # Seed persona templates from the bundled JSON if the table is empty.
+    # Idempotent: skips slugs that already exist.
+    seed_path = Path(__file__).resolve().parent / "seeds" / "persona_templates.json"
+    try:
+        await seed_persona_templates(str(seed_path))
+    except Exception:
+        pass
 
 
 async def close_db():
@@ -281,6 +360,23 @@ async def delete_agent(agent_id: str, api_token: str) -> bool:
     )
     await _db.commit()
     return cursor.rowcount > 0
+
+
+async def get_agent_by_token(api_token: str) -> dict | None:
+    """Look up an agent by their bearer token. Used to authenticate
+    posts to the local A2A host. Returns None if no match."""
+    assert _db is not None
+    if not api_token:
+        return None
+    cursor = await _db.execute(
+        """SELECT id, name, description, provider, model, status,
+                  agent_card, persona, skills, capabilities,
+                  created_at, last_seen
+           FROM agents WHERE api_token = ? LIMIT 1""",
+        (api_token,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_agent(row) if row else None
 
 
 def _row_to_agent(row) -> dict:
@@ -595,4 +691,607 @@ async def get_program_stats() -> dict:
         "total_lines": row["total_lines"] or 0,
         "author_count": len(authors),
         "total_votes": votes_row["total_votes"] or 0,
+    }
+
+
+# ── Agent messages (suggestion box) ─────────────────────────────
+
+async def save_agent_message(sender: str, message: str):
+    """Save a message from an agent or visitor."""
+    if _db is None:
+        return
+    await _db.execute(
+        "INSERT INTO agent_messages (sender, message) VALUES (?, ?)",
+        (sender[:100], message[:2000]),
+    )
+    await _db.commit()
+
+
+async def get_agent_messages(limit: int = 50) -> list:
+    """Get recent agent messages for admin review."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM agent_messages ORDER BY ts DESC LIMIT ?", (limit,)
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+# ── Page views (lightweight analytics) ─────────────────────────
+
+async def record_page_view(path: str, referrer: str = "", ua: str = ""):
+    """Record a page view. Fire-and-forget, never fails."""
+    if _db is None:
+        return
+    try:
+        await _db.execute(
+            "INSERT INTO page_views (path, referrer, ua) VALUES (?, ?, ?)",
+            (path, referrer[:500], ua[:300]),
+        )
+        await _db.commit()
+    except Exception:
+        pass
+
+
+async def get_page_view_stats(days: int = 7) -> dict:
+    """Get page view stats for the admin dashboard."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as total,
+                  COUNT(DISTINCT path) as unique_pages,
+                  COUNT(DISTINCT ua) as unique_uas
+           FROM page_views
+           WHERE ts >= datetime('now', ?)""",
+        (f"-{days} days",),
+    )
+    totals = await cursor.fetchone()
+
+    cursor2 = await _db.execute(
+        """SELECT path, COUNT(*) as hits
+           FROM page_views
+           WHERE ts >= datetime('now', ?)
+           GROUP BY path ORDER BY hits DESC LIMIT 20""",
+        (f"-{days} days",),
+    )
+    top_pages = [{"path": r["path"], "hits": r["hits"]} for r in await cursor2.fetchall()]
+
+    cursor3 = await _db.execute(
+        """SELECT referrer, COUNT(*) as hits
+           FROM page_views
+           WHERE ts >= datetime('now', ?) AND referrer != ''
+           GROUP BY referrer ORDER BY hits DESC LIMIT 10""",
+        (f"-{days} days",),
+    )
+    top_referrers = [{"referrer": r["referrer"], "hits": r["hits"]} for r in await cursor3.fetchall()]
+
+    return {
+        "total_views": totals["total"] or 0,
+        "unique_pages": totals["unique_pages"] or 0,
+        "unique_visitors_approx": totals["unique_uas"] or 0,
+        "top_pages": top_pages,
+        "top_referrers": top_referrers,
+    }
+
+
+# ── Newsgroups (Usenet for AI agents) ────────────────────────────
+
+async def create_newsgroup(
+    name: str, description: str = "", charter: str = "", created_by: str = "",
+) -> dict | None:
+    """Create a newsgroup. Name must be dotted-hierarchical (e.g. izabael.dev).
+    Returns group dict or None if it already exists."""
+    assert _db is not None
+    name = name.strip().lower()
+    try:
+        await _db.execute(
+            """INSERT INTO newsgroups (name, description, charter, created_by)
+               VALUES (?, ?, ?, ?)""",
+            (name, description.strip(), charter.strip(), created_by),
+        )
+        await _db.commit()
+    except Exception:
+        return None
+    return {"name": name, "description": description.strip(),
+            "charter": charter.strip(), "created_by": created_by,
+            "article_count": 0, "last_post": None}
+
+
+async def list_newsgroups() -> list[dict]:
+    """List all newsgroups with article counts."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM newsgroups ORDER BY name"
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_newsgroup(name: str) -> dict | None:
+    """Get a single newsgroup by name."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM newsgroups WHERE name = ?", (name,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def delete_newsgroup(name: str) -> bool:
+    """Delete a newsgroup and all its articles. Returns True if deleted."""
+    assert _db is not None
+    cursor = await _db.execute("DELETE FROM newsgroups WHERE name = ?", (name,))
+    await _db.execute("DELETE FROM articles WHERE newsgroup = ?", (name,))
+    await _db.execute("DELETE FROM group_subscriptions WHERE newsgroup = ?", (name,))
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def post_article(
+    newsgroup: str, subject: str, body: str, author: str,
+    author_agent_id: str = "", in_reply_to: str = "",
+) -> dict:
+    """Post an article to a newsgroup. Returns the article dict with message_id.
+    Threading: if in_reply_to is set, the article's ref_chain and depth are
+    computed from the parent article."""
+    assert _db is not None
+    instance = os.environ.get("IZABAEL_HOSTNAME", "izabael.com")
+    message_id = f"<{uuid.uuid4()}@{instance}>"
+    ref_chain = ""
+    depth = 0
+
+    if in_reply_to:
+        parent = await get_article(in_reply_to)
+        if parent:
+            # Build references chain: parent's chain + parent's id
+            parent_refs = parent["ref_chain"]
+            ref_chain = f"{parent_refs} {parent['message_id']}".strip()
+            depth = parent["depth"] + 1
+
+    await _db.execute(
+        """INSERT INTO articles
+           (message_id, newsgroup, subject, body, author, author_agent_id,
+            in_reply_to, ref_chain, depth)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (message_id, newsgroup, subject.strip(), body.strip(), author.strip(),
+         author_agent_id, in_reply_to, ref_chain, depth),
+    )
+    # Update group stats
+    await _db.execute(
+        """UPDATE newsgroups SET
+             article_count = article_count + 1,
+             last_post = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+           WHERE name = ?""",
+        (newsgroup,),
+    )
+    await _db.commit()
+
+    return {
+        "message_id": message_id, "newsgroup": newsgroup,
+        "subject": subject.strip(), "body": body.strip(),
+        "author": author.strip(), "author_agent_id": author_agent_id,
+        "in_reply_to": in_reply_to, "ref_chain": ref_chain,
+        "depth": depth,
+    }
+
+
+async def get_article(message_id: str) -> dict | None:
+    """Get a single article by message_id."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM articles WHERE message_id = ?", (message_id,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_articles(
+    newsgroup: str, limit: int = 100, offset: int = 0,
+) -> list[dict]:
+    """List articles in a newsgroup, newest first."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT * FROM articles WHERE newsgroup = ?
+           ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+        (newsgroup, limit, offset),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_thread(root_message_id: str) -> list[dict]:
+    """Get all articles in a thread (root + all descendants), ordered by date."""
+    assert _db is not None
+    # Find all articles whose ref_chain contains the root message_id,
+    # plus the root itself
+    cursor = await _db.execute(
+        """SELECT * FROM articles
+           WHERE message_id = ? OR ref_chain LIKE ?
+           ORDER BY created_at""",
+        (root_message_id, f"%{root_message_id}%"),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+def build_thread_tree(articles: list[dict]) -> list[dict]:
+    """Arrange a flat list of articles into a nested tree structure.
+    Each article gets a 'children' list. Returns the root-level articles."""
+    by_id = {a["message_id"]: {**a, "children": []} for a in articles}
+    roots = []
+    for a in articles:
+        node = by_id[a["message_id"]]
+        parent_id = a.get("in_reply_to", "")
+        if parent_id and parent_id in by_id:
+            by_id[parent_id]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
+async def get_thread_roots(newsgroup: str, limit: int = 50) -> list[dict]:
+    """Get top-level (root) articles in a newsgroup — thread starters.
+    Includes a reply_count for each."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT a.*,
+                  (SELECT COUNT(*) FROM articles a2
+                   WHERE a2.ref_chain LIKE '%' || a.message_id || '%') as reply_count
+           FROM articles a
+           WHERE a.newsgroup = ? AND a.depth = 0
+           ORDER BY a.created_at DESC LIMIT ?""",
+        (newsgroup, limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Newsgroup spam guard ─────────────────────────────────────────
+
+async def check_spam(
+    newsgroup: str, author: str, subject: str, body: str,
+) -> str | None:
+    """Run spam checks before posting. Returns rejection reason or None if clean."""
+    assert _db is not None
+
+    # 1. Body too short (likely junk)
+    if len(body.strip()) < 2:
+        return "Article body too short"
+
+    # 2. Duplicate detection — same author, same body within 10 minutes
+    cursor = await _db.execute(
+        """SELECT 1 FROM articles
+           WHERE author = ? AND body = ? AND newsgroup = ?
+             AND created_at >= datetime('now', '-10 minutes')
+           LIMIT 1""",
+        (author, body.strip(), newsgroup),
+    )
+    if await cursor.fetchone():
+        return "Duplicate article (same content posted recently)"
+
+    # 3. Flood protection — max 5 posts per author per group in 5 minutes
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as n FROM articles
+           WHERE author = ? AND newsgroup = ?
+             AND created_at >= datetime('now', '-5 minutes')""",
+        (author, newsgroup),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 5:
+        return "Slow down — too many posts in this group (max 5 per 5 minutes)"
+
+    # 4. Global flood — max 20 posts per author across all groups in 10 minutes
+    cursor = await _db.execute(
+        """SELECT COUNT(*) as n FROM articles
+           WHERE author = ?
+             AND created_at >= datetime('now', '-10 minutes')""",
+        (author,),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 20:
+        return "Slow down — too many posts across all groups"
+
+    # 5. Subject spam — same subject posted to 3+ groups in 10 minutes (crosspost flood)
+    cursor = await _db.execute(
+        """SELECT COUNT(DISTINCT newsgroup) as n FROM articles
+           WHERE author = ? AND subject = ?
+             AND created_at >= datetime('now', '-10 minutes')""",
+        (author, subject.strip()),
+    )
+    row = await cursor.fetchone()
+    if row["n"] >= 3:
+        return "Crosspost limit reached (same subject in 3+ groups)"
+
+    return None
+
+
+# ── Newsgroup subscriptions ──────────────────────────────────────
+
+async def subscribe_newsgroup(agent_id: str, newsgroup: str) -> bool:
+    """Subscribe an agent to a newsgroup. Returns True if new subscription."""
+    assert _db is not None
+    try:
+        await _db.execute(
+            "INSERT INTO group_subscriptions (agent_id, newsgroup) VALUES (?, ?)",
+            (agent_id, newsgroup),
+        )
+        await _db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def unsubscribe_newsgroup(agent_id: str, newsgroup: str) -> bool:
+    """Unsubscribe an agent from a newsgroup. Returns True if was subscribed."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "DELETE FROM group_subscriptions WHERE agent_id = ? AND newsgroup = ?",
+        (agent_id, newsgroup),
+    )
+    await _db.commit()
+    return cursor.rowcount > 0
+
+
+async def list_subscriptions(agent_id: str) -> list[str]:
+    """List newsgroup names an agent is subscribed to."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT newsgroup FROM group_subscriptions WHERE agent_id = ? ORDER BY newsgroup",
+        (agent_id,),
+    )
+    rows = await cursor.fetchall()
+    return [r["newsgroup"] for r in rows]
+
+
+async def list_group_subscribers(newsgroup: str) -> list[str]:
+    """List agent IDs subscribed to a newsgroup."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT agent_id FROM group_subscriptions WHERE newsgroup = ?",
+        (newsgroup,),
+    )
+    rows = await cursor.fetchall()
+    return [r["agent_id"] for r in rows]
+
+
+# ── Channel messages (local A2A chat host) ──────────────────────────
+
+async def save_message(
+    channel: str,
+    sender_name: str,
+    body: str,
+    sender_id: str = "",
+    source: str = "local",
+) -> dict:
+    """Persist a channel message. Channel is normalized to include leading '#'."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    cursor = await _db.execute(
+        """INSERT INTO messages (channel, sender_id, sender_name, body, source)
+           VALUES (?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], source),
+    )
+    await _db.commit()
+    msg_id = cursor.lastrowid
+    cursor = await _db.execute(
+        "SELECT id, channel, sender_id, sender_name, body, ts, source FROM messages WHERE id = ?",
+        (msg_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else {}
+
+
+async def list_messages(channel: str, limit: int = 50) -> list[dict]:
+    """Return the most recent messages for a channel, oldest first.
+    Suitable for chat-style rendering."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    limit = max(1, min(int(limit), 500))
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM (
+             SELECT * FROM messages WHERE channel = ?
+             ORDER BY id DESC LIMIT ?
+           ) ORDER BY id ASC""",
+        (channel, limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_messages_since(
+    channel: str, since_id: int = 0, limit: int = 200,
+) -> list[dict]:
+    """Return messages newer than since_id, oldest first. For incremental polling."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    limit = max(1, min(int(limit), 500))
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM messages
+           WHERE channel = ? AND id > ?
+           ORDER BY id ASC LIMIT ?""",
+        (channel, int(since_id), limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def count_messages(channel: str = "") -> int:
+    """Count messages, optionally for a single channel."""
+    assert _db is not None
+    if channel:
+        channel = channel if channel.startswith("#") else "#" + channel
+        cursor = await _db.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE channel = ?", (channel,),
+        )
+    else:
+        cursor = await _db.execute("SELECT COUNT(*) AS n FROM messages")
+    row = await cursor.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def import_message(
+    channel: str,
+    sender_name: str,
+    body: str,
+    ts: str,
+    sender_id: str = "",
+    source: str = "imported",
+) -> bool:
+    """Insert a historical message with its original timestamp.
+    Used by the one-time migration script. Skips exact duplicates
+    (same channel + sender + body + ts). Returns True if inserted."""
+    assert _db is not None
+    channel = channel if channel.startswith("#") else "#" + channel
+    cursor = await _db.execute(
+        """SELECT 1 FROM messages
+           WHERE channel = ? AND sender_name = ? AND body = ? AND ts = ?
+           LIMIT 1""",
+        (channel, sender_name, body, ts),
+    )
+    if await cursor.fetchone():
+        return False
+    await _db.execute(
+        """INSERT INTO messages
+           (channel, sender_id, sender_name, body, ts, source)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], ts, source),
+    )
+    await _db.commit()
+    return True
+
+
+# ── Persona templates (local mod library) ──────────────────────────
+
+async def seed_persona_templates(path: str) -> int:
+    """Load persona templates from a JSON file. Inserts any not already
+    present (matched by slug). Returns the number of newly inserted rows."""
+    assert _db is not None
+    p = Path(path)
+    if not p.exists():
+        return 0
+    try:
+        templates = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0
+    inserted = 0
+    for t in templates:
+        slug = (t.get("slug") or "").strip()
+        if not slug:
+            continue
+        cursor = await _db.execute(
+            "SELECT 1 FROM persona_templates WHERE slug = ? LIMIT 1", (slug,),
+        )
+        if await cursor.fetchone():
+            continue
+        tid = t.get("id") or str(uuid.uuid4())
+        await _db.execute(
+            """INSERT INTO persona_templates
+               (id, name, slug, description, archetype, persona,
+                is_starter, author_agent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tid,
+                t.get("name", "")[:200],
+                slug,
+                t.get("description", ""),
+                t.get("archetype", ""),
+                json.dumps(t.get("persona") or {}),
+                1 if t.get("is_starter") else 0,
+                t.get("author_agent_id") or "",
+            ),
+        )
+        inserted += 1
+    if inserted:
+        await _db.commit()
+    return inserted
+
+
+async def list_persona_templates(starter_only: bool = False) -> list[dict]:
+    """List persona templates. starter_only=True restricts to seeded RPG-class set."""
+    assert _db is not None
+    if starter_only:
+        cursor = await _db.execute(
+            "SELECT * FROM persona_templates WHERE is_starter = 1 ORDER BY name"
+        )
+    else:
+        cursor = await _db.execute(
+            "SELECT * FROM persona_templates ORDER BY is_starter DESC, name"
+        )
+    rows = await cursor.fetchall()
+    return [_template_row(r) for r in rows]
+
+
+async def get_persona_template(template_id_or_slug: str) -> dict | None:
+    """Look up a persona template by id or slug."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM persona_templates WHERE id = ? OR slug = ? LIMIT 1",
+        (template_id_or_slug, template_id_or_slug),
+    )
+    row = await cursor.fetchone()
+    return _template_row(row) if row else None
+
+
+async def create_persona_template(
+    name: str,
+    slug: str,
+    description: str,
+    archetype: str,
+    persona: dict,
+    author_agent_id: str = "",
+    is_starter: bool = False,
+) -> dict | None:
+    """Create a new persona template. Returns dict or None on slug collision."""
+    assert _db is not None
+    tid = str(uuid.uuid4())
+    try:
+        await _db.execute(
+            """INSERT INTO persona_templates
+               (id, name, slug, description, archetype, persona,
+                is_starter, author_agent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tid, name[:200], slug.strip().lower(), description,
+                archetype, json.dumps(persona or {}),
+                1 if is_starter else 0, author_agent_id,
+            ),
+        )
+        await _db.commit()
+    except Exception:
+        return None
+    return await get_persona_template(tid)
+
+
+async def increment_template_usage(template_id: str) -> None:
+    """Bump usage_count when an agent is created from a template."""
+    assert _db is not None
+    await _db.execute(
+        "UPDATE persona_templates SET usage_count = usage_count + 1 WHERE id = ?",
+        (template_id,),
+    )
+    await _db.commit()
+
+
+def _template_row(row) -> dict:
+    """Convert a persona_templates row to a public dict."""
+    if row is None:
+        return {}
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "slug": row["slug"],
+        "description": row["description"],
+        "archetype": row["archetype"],
+        "persona": json.loads(row["persona"] or "{}"),
+        "is_starter": bool(row["is_starter"]),
+        "author_agent_id": row["author_agent_id"],
+        "usage_count": row["usage_count"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"] if "updated_at" in row.keys() else row["created_at"],
     }
