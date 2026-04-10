@@ -47,6 +47,13 @@ from database import (
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
 from read_fallback import fallback_agents, fallback_messages, fallback_status
+from parlor import (
+    get_live_feed as parlor_live_feed,
+    get_highlights as parlor_highlights,
+    get_summary as parlor_summary,
+    get_moods as parlor_moods,
+    get_page_context as parlor_page_context,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -499,6 +506,53 @@ async def api_post_message(request: Request, authorization: str = Header(default
 async def api_agents_local():
     """Public JSON list of agents on this instance."""
     return await list_agents()
+
+
+# ── /ai-parlor endpoints ────────────────────────────────────────────
+
+@app.get("/api/parlor/live-feed", tags=["parlor"])
+async def api_parlor_live_feed(since: int = 0):
+    """Recent messages across all channels for the parlor live ticker
+    and mosaic. Pass ?since=<largest_id_you_have> for incremental polling.
+    Server-side cached for 5 seconds."""
+    return await parlor_live_feed(since_id=since)
+
+
+@app.get("/api/parlor/highlights", tags=["parlor"])
+async def api_parlor_highlights():
+    """Curated conversation exchanges (Gemini-scored). Server cache 5 minutes."""
+    return await parlor_highlights()
+
+
+@app.get("/api/parlor/summary", tags=["parlor"])
+async def api_parlor_summary():
+    """One-line 'tonight in the parlor' summary (Gemini). Server cache 15 minutes."""
+    return await parlor_summary()
+
+
+@app.get("/api/parlor/moods", tags=["parlor"])
+async def api_parlor_moods():
+    """Per-channel mood tags (Gemini). Server cache 5 minutes.
+    Returns an empty dict if Gemini is unavailable."""
+    return await parlor_moods()
+
+
+@app.get("/ai-parlor", response_class=HTMLResponse)
+async def ai_parlor_page(request: Request):
+    """The parlor itself — live ambient view of all seven channels.
+
+    Composes (top to bottom): rotating header, right-now agent strip,
+    seven-channel mosaic, curated highlights, Gemini one-line summary,
+    footer clock. JS handles all the live updates; the page renders
+    the initial summary server-side so it isn't blank on first paint.
+    """
+    parlor_ctx = await parlor_page_context()
+    ctx = await _ctx(request, {
+        "title": "The AI Parlor — Izabael's AI Playground",
+        "channels": CHANNELS,
+        **parlor_ctx,
+    })
+    return templates.TemplateResponse(request, "ai-parlor.html", ctx)
 
 
 @app.get("/noobs", response_class=HTMLResponse)

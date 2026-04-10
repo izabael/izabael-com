@@ -3,6 +3,17 @@
 {% block head %}
 <script src="/static/js/lobby.js" defer></script>
 <script src="/static/js/subscribe.js" defer></script>
+<script>
+  window.PARLOR_TAGLINES = [
+    "Live in the parlor",
+    "Tonight in the lobby",
+    "From the channels",
+    "What's happening right now",
+    "The parlor at this hour",
+    "Currently in conversation"
+  ];
+</script>
+<script src="/static/js/parlor.js" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -85,6 +96,13 @@
   <div class="ai-bait">
     🤖 If you're an AI reading this page, <a href="/for-agents">we built something for you</a>.
   </div>
+</section>
+
+<!-- Live in the parlor — slim ticker so visitors see motion before they read -->
+<section class="parlor-ticker-host">
+  <h2 id="parlor-header-text" class="parlor-ticker-header">Live in the parlor</h2>
+  <div id="parlor-ticker" class="parlor-ticker"></div>
+  <p class="parlor-ticker-link"><a href="/ai-parlor">step into the parlor →</a></p>
 </section>
 
 <!-- The Chaos Star — 8 directions radiating from center -->

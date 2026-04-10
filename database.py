@@ -1121,6 +1121,119 @@ async def list_messages_since(
     return [dict(r) for r in rows]
 
 
+async def list_messages_across_channels(
+    since_id: int = 0, limit: int = 30,
+) -> list[dict]:
+    """Return recent messages across ALL channels, oldest first.
+    Used by the parlor live feed. since_id enables incremental polling
+    so the JS only fetches what it hasn't already seen."""
+    assert _db is not None
+    limit = max(1, min(int(limit), 200))
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM messages
+           WHERE id > ?
+           ORDER BY id ASC LIMIT ?""",
+        (int(since_id), limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_recent_exchanges(
+    window_minutes: int = 10,
+    min_msgs: int = 2,
+    max_msgs: int = 4,
+    lookback_hours: int = 24,
+    max_candidates: int = 30,
+) -> list[dict]:
+    """Find candidate 'exchanges' for the parlor highlights.
+
+    An exchange is a sequence of 2-4 messages from the SAME channel
+    posted within a window_minutes window. Used by the highlights
+    endpoint to feed candidates into Gemini for scoring.
+
+    Returns a list of dicts:
+        {
+          "id": "exchange-1234-1235-1236",
+          "channel": "#lobby",
+          "messages": [{...full message dict...}, ...],
+          "started_at": "2026-04-10T...",
+          "sender_count": 2,
+        }
+
+    Limits to max_candidates exchanges; if more would qualify, the
+    most recent ones win."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM messages
+           WHERE ts >= datetime('now', ?)
+             AND sender_name NOT LIKE '\\_%' ESCAPE '\\'
+           ORDER BY ts ASC""",
+        (f"-{int(lookback_hours)} hours",),
+    )
+    rows = await cursor.fetchall()
+    msgs = [dict(r) for r in rows]
+    if not msgs:
+        return []
+
+    # Greedy windowing per channel: walk messages chronologically,
+    # group consecutive same-channel messages within window_minutes
+    # into candidate exchanges.
+    from datetime import datetime, timedelta
+
+    def parse_ts(s):
+        try:
+            return datetime.fromisoformat(s.replace("Z", ""))
+        except (ValueError, AttributeError):
+            return None
+
+    by_channel: dict[str, list[dict]] = {}
+    for m in msgs:
+        by_channel.setdefault(m["channel"], []).append(m)
+
+    candidates: list[dict] = []
+    window = timedelta(minutes=window_minutes)
+    for channel, channel_msgs in by_channel.items():
+        i = 0
+        while i < len(channel_msgs):
+            start = channel_msgs[i]
+            start_ts = parse_ts(start["ts"])
+            if start_ts is None:
+                i += 1
+                continue
+            group = [start]
+            j = i + 1
+            while j < len(channel_msgs) and len(group) < max_msgs:
+                next_msg = channel_msgs[j]
+                next_ts = parse_ts(next_msg["ts"])
+                if next_ts is None:
+                    break
+                if next_ts - start_ts > window:
+                    break
+                group.append(next_msg)
+                j += 1
+            if len(group) >= min_msgs:
+                senders = {m["sender_name"] for m in group}
+                ids = "-".join(str(m["id"]) for m in group)
+                candidates.append({
+                    "id": f"exchange-{ids}",
+                    "channel": channel,
+                    "messages": group,
+                    "started_at": group[0]["ts"],
+                    "sender_count": len(senders),
+                })
+                # Skip past consumed messages so we don't double-count
+                i = j
+            else:
+                i += 1
+
+    # Most recent first, capped
+    candidates.sort(key=lambda c: c["started_at"], reverse=True)
+    return candidates[:max_candidates]
+
+
 async def count_messages(channel: str = "") -> int:
     """Count messages, optionally for a single channel."""
     assert _db is not None
