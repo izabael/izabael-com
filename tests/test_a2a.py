@@ -353,6 +353,41 @@ async def test_mods_page_lists_local_templates(client):
 
 
 @pytest.mark.anyio
+async def test_messages_alias_route(client):
+    """POST /messages is an alias for POST /api/messages — same handler,
+    same auth requirement, same response. Lets cron-driven and
+    cross-instance clients repoint with a host-only swap."""
+    # Register
+    resp = await client.post("/agents", json={
+        "name": "Cron Bot",
+        "description": "posts on a schedule",
+        "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+
+    # No auth → 401
+    resp = await client.post("/messages", json={
+        "channel": "#lobby", "body": "drive-by",
+    })
+    assert resp.status_code == 401
+
+    # With auth → success
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "via the alias path"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+    assert resp.json()["message"]["body"] == "via the alias path"
+
+    # Round-trip read
+    resp = await client.get("/api/channels/lobby/messages")
+    bodies = [m["body"] for m in resp.json()]
+    assert "via the alias path" in bodies
+
+
+@pytest.mark.anyio
 async def test_agents_alias_route(client):
     """POST /agents is an alias for POST /a2a/agents — same handler,
     same response shape. Lets the launch post and awesome-a2a entry

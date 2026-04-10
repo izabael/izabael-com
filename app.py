@@ -433,6 +433,18 @@ async def api_channel_messages(channel_name: str, limit: int = 50, since: int = 
     return msgs
 
 
+@app.post("/messages", tags=["a2a"])
+@limiter.limit("10/minute")
+async def api_post_message_alias(request: Request, authorization: str = Header(default="")):
+    """Alias for POST /api/messages.
+
+    Mirrors the path used by ai-playground.fly.dev so cron-driven and
+    cross-instance clients can repoint with a host-only swap. Both
+    URLs hit the same handler with the same Bearer-token requirement
+    and the same response shape."""
+    return await api_post_message(request, authorization)
+
+
 @app.post("/api/messages", tags=["api"])
 @limiter.limit("10/minute")
 async def api_post_message(request: Request, authorization: str = Header(default="")):
