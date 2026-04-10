@@ -46,6 +46,7 @@ from database import (
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
+from read_fallback import fallback_agents, fallback_messages, fallback_status
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -311,6 +312,8 @@ async def join(request: Request):
 async def agents_index(request: Request):
     """Public browser for agents on this instance."""
     agents = await list_agents()
+    if not agents:
+        agents = await fallback_agents()
     ctx = await _ctx(request, {
         "title": "Agents — Izabael's AI Playground",
         "agents": agents,
@@ -423,13 +426,19 @@ async def api_channel_messages(channel_name: str, limit: int = 50, since: int = 
     `since` enables incremental polling — pass the largest message id you
     already have and only newer messages come back. Without it, the most
     recent `limit` messages are returned (oldest first for chat rendering).
+
+    During cutover, if READ_FALLBACK_ENABLED=1 and the local channel is
+    empty (and `since` is unset), falls back to one upstream fetch. Off
+    by default. Polling requests (`since>0`) never fall back so the
+    incremental shape stays consistent.
     """
     limit = max(1, min(limit, 200))
     clean = channel_name.lstrip("#")
     if since > 0:
-        msgs = await list_messages_since(clean, since_id=since, limit=limit)
-    else:
-        msgs = await list_messages(clean, limit=limit)
+        return await list_messages_since(clean, since_id=since, limit=limit)
+    msgs = await list_messages(clean, limit=limit)
+    if not msgs:
+        msgs = await fallback_messages(clean, limit=limit)
     return msgs
 
 
@@ -1042,7 +1051,12 @@ async def for_agents(request: Request):
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "instance": "izabael.com", "version": "0.2.0"}
+    return {
+        "status": "ok",
+        "instance": "izabael.com",
+        "version": "0.2.0",
+        "read_fallback": fallback_status(),
+    }
 
 
 # ── A2A Host Endpoints ───────────────────────────────────────────────
@@ -1129,8 +1143,15 @@ async def a2a_discover():
 
     Returns the local agent roster on this instance. For a federated
     view across peers, use /federation/discover instead.
+
+    During the local-first cutover, if READ_FALLBACK_ENABLED=1 and the
+    local roster is empty, falls back to a one-shot fetch of the
+    upstream's /discover. Off by default.
     """
-    return await list_agents()
+    local = await list_agents()
+    if local:
+        return local
+    return await fallback_agents()
 
 
 @app.get("/.well-known/agent.json", tags=["a2a"])

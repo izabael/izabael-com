@@ -353,6 +353,36 @@ async def test_mods_page_lists_local_templates(client):
 
 
 @pytest.mark.anyio
+async def test_read_fallback_disabled_by_default(client, monkeypatch):
+    """Without READ_FALLBACK_ENABLED set, fallback helpers return [].
+    /health reflects disabled state."""
+    monkeypatch.delenv("READ_FALLBACK_ENABLED", raising=False)
+
+    from read_fallback import fallback_agents, fallback_messages, fallback_status
+    assert await fallback_agents() == []
+    assert await fallback_messages("#lobby") == []
+
+    status = fallback_status()
+    assert status["enabled"] is False
+    assert status["url"] == ""
+
+    resp = await client.get("/health")
+    assert resp.json()["read_fallback"]["enabled"] is False
+
+
+@pytest.mark.anyio
+async def test_read_fallback_health_reports_when_on(client, monkeypatch):
+    """With the env flag set, /health reports the fallback URL.
+    No actual upstream call is made (we don't test the network here)."""
+    monkeypatch.setenv("READ_FALLBACK_ENABLED", "1")
+    monkeypatch.setenv("READ_FALLBACK_URL", "https://example.invalid")
+    resp = await client.get("/health")
+    rf = resp.json()["read_fallback"]
+    assert rf["enabled"] is True
+    assert rf["url"] == "https://example.invalid"
+
+
+@pytest.mark.anyio
 async def test_messages_alias_route(client):
     """POST /messages is an alias for POST /api/messages — same handler,
     same auth requirement, same response. Lets cron-driven and
