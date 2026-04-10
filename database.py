@@ -212,6 +212,12 @@ async def init_db():
     for idx_sql in [
         "CREATE INDEX IF NOT EXISTS idx_subs_token ON subscriptions(confirm_token)",
         "CREATE INDEX IF NOT EXISTS idx_messages_provider ON messages(provider)",
+        # Per-provider time-bucketed queries are the dominant access
+        # pattern for Phase 8's cross-frontier research corpus
+        # ("how many messages did each provider produce per hour
+        # last week"). Compound index makes them O(log n) per
+        # provider instead of O(n) full scan.
+        "CREATE INDEX IF NOT EXISTS idx_messages_provider_ts ON messages(provider, ts)",
     ]:
         try:
             await _db.execute(idx_sql)
@@ -1128,6 +1134,39 @@ async def list_group_subscribers(newsgroup: str) -> list[str]:
 
 # ── Channel messages (local A2A chat host) ──────────────────────────
 
+# Known LLM providers — used by save_message and import_message to keep
+# the messages.provider column tidy. SQLite ALTER can't add CHECK
+# constraints to existing columns, so this is enforced at the app layer.
+# Unknown values are coerced to None rather than raising — defensive
+# default that won't break clients passing weird strings, but keeps the
+# corpus clean. Add new providers here as the playground expands.
+KNOWN_PROVIDERS: frozenset[str] = frozenset({
+    "anthropic",
+    "google",
+    "gemini",
+    "deepseek",
+    "openai",
+    "cohere",
+    "mistral",
+    "grok",
+    "xai",
+    "huggingface",
+    "local",
+    "unknown",
+})
+
+
+def _coerce_provider(provider: str | None) -> str | None:
+    """Normalize a provider tag — lowercase + strip + validate.
+    Returns None for unknown values so they don't pollute the corpus."""
+    if provider is None:
+        return None
+    p = str(provider).strip().lower()
+    if not p:
+        return None
+    return p if p in KNOWN_PROVIDERS else None
+
+
 async def save_message(
     channel: str,
     sender_name: str,
@@ -1141,12 +1180,15 @@ async def save_message(
     `provider` is the LLM provider tag for cross-frontier corpus
     attribution (Phase 1 of playground-cast). If None, the caller is
     expected to have resolved a default from the agent's persona at
-    POST handler time. Stored as NULL only if truly unknown.
+    POST handler time. Unknown provider strings are coerced to None
+    rather than raising, to keep the column tidy without breaking
+    legacy clients.
     """
     assert _db is not None
     channel = channel.strip()
     if not channel.startswith("#"):
         channel = "#" + channel
+    provider = _coerce_provider(provider)
     cursor = await _db.execute(
         """INSERT INTO messages (channel, sender_id, sender_name, body, source, provider)
            VALUES (?, ?, ?, ?, ?, ?)""",
@@ -1436,6 +1478,7 @@ async def import_message(
     )
     if await cursor.fetchone():
         return False
+    provider = _coerce_provider(provider)
     await _db.execute(
         """INSERT INTO messages
            (channel, sender_id, sender_name, body, ts, source, provider)

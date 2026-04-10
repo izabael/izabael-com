@@ -395,6 +395,46 @@ async def test_post_message_no_provider_is_null(client):
 
 
 @pytest.mark.anyio
+async def test_post_message_unknown_provider_coerced_to_null(client):
+    """Unknown provider strings (typos, novelty values, garbage) get
+    coerced to NULL rather than polluting the corpus. This is the
+    Python-side equivalent of a CHECK constraint enum (SQLite ALTER
+    can't add a CHECK to an existing column)."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Typoer", "description": "passes typos", "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Unknown provider name → coerced to None
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "typo'd", "provider": "anhtropic"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] is None
+
+    # Empty string → None
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "empty", "provider": ""},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] is None
+
+    # Whitespace → None
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "spaces", "provider": "   "},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] is None
+
+
+@pytest.mark.anyio
 async def test_register_agent_with_default_provider(client):
     """Agents registered with a recognized provider in the existing
     `provider` field auto-derive default_provider, so subsequent
