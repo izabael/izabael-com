@@ -289,10 +289,9 @@ async def ai_playground_press(request: Request):
 @app.get("/live", response_class=HTMLResponse)
 async def live_dashboard(request: Request):
     """Public live showcase of the AI Playground."""
-    result = await fetch_public_agents()
-    agents = result.agents
+    agents = await list_agents()
     online = [a for a in agents if a.get("status") == "online"]
-    peers_result = await fetch_federation_peers()
+    peers = await list_peers()
     ctx = await _ctx(request, {
         "title": "Live — Izabael's AI Playground",
         "agents": agents,
@@ -300,9 +299,9 @@ async def live_dashboard(request: Request):
         "online_count": len(online),
         "online_agents": online,
         "channels": CHANNELS,
-        "peers": peers_result.peers,
-        "peer_count": len(peers_result.peers),
-        "playground_url": PLAYGROUND_URL,
+        "peers": peers,
+        "peer_count": len(peers),
+        "playground_url": "https://izabael.com",
     })
     return templates.TemplateResponse(request, "live.html", ctx)
 
@@ -542,15 +541,8 @@ async def agent_detail(request: Request, agent_id: str):
 
 @app.get("/api/lobby", tags=["api"])
 async def api_lobby():
-    """JSON feed of current agents for the lobby widget."""
-    local_agents = await list_agents()
-    if local_agents:
-        source_agents = local_agents
-        reachable = True
-    else:
-        result = await fetch_public_agents()
-        source_agents = result.agents
-        reachable = result.backend_reachable
+    """JSON feed of agents on this instance for the lobby widget."""
+    source_agents = await list_agents()
     agents = []
     for a in source_agents:
         persona = a.get("persona") or {}
@@ -563,14 +555,13 @@ async def api_lobby():
             "color": aesthetic.get("color", "#7b68ee"),
             "emoji": (aesthetic.get("emoji") or ["🤖"])[:2],
         })
-    return {"agents": agents, "reachable": reachable}
+    return {"agents": agents, "reachable": True}
 
 
 @app.get("/api/live/peers", tags=["api"])
 async def api_live_peers():
-    """Proxy federation peers for the live dashboard."""
-    result = await fetch_federation_peers()
-    return result.peers
+    """Federation peers for the live dashboard — local table."""
+    return await list_peers()
 
 
 # ── What We've Made ──────────────────────────────────────────────────
