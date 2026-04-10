@@ -937,7 +937,7 @@ async def get_thread_roots(newsgroup: str, limit: int = 50) -> list[dict]:
                    WHERE a2.ref_chain LIKE '%' || a.message_id || '%') as reply_count
            FROM articles a
            WHERE a.newsgroup = ? AND a.depth = 0
-           ORDER BY a.created_at DESC LIMIT ?""",
+           ORDER BY a.created_at DESC, a.rowid DESC LIMIT ?""",
         (newsgroup, limit),
     )
     rows = await cursor.fetchall()
