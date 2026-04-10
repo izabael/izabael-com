@@ -22,6 +22,15 @@ async def _init_test_db(tmp_path):
     import database
     database.DB_PATH = str(tmp_path / "test.db")
     await init_db()
+    # Reset the slowapi rate limiter so per-test post counts don't
+    # accumulate across the suite. The /messages endpoint is rate
+    # limited to 10/minute and several Phase 1 tests post multiple
+    # messages — without this reset they hit the limit collectively.
+    try:
+        from app import limiter
+        limiter.reset()
+    except Exception:
+        pass
     yield
     await close_db()
 
@@ -276,6 +285,185 @@ async def test_post_message_round_trip(client):
     resp = await client.get("/api/channels")
     by_name = {c["name"]: c for c in resp.json()}
     assert by_name["#lobby"]["message_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_post_message_dual_shape(client):
+    """izabael.com POST /messages must accept BOTH the native shape and
+    the ai-playground shape so cross-instance clients can host-swap.
+
+    Native:        {channel, body}
+    ai-playground: {to, content}
+
+    Originally implemented by iza-1 on branch izabael/iza-1-compat-shim
+    commit 3a9f203, re-applied here as part of Phase 1 of playground-cast
+    so the schema migration and the compat shim ship in one PR.
+    """
+    resp = await client.post("/a2a/agents", json={
+        "name": "Bishape",
+        "description": "speaks both shapes",
+        "tos_accepted": True,
+    })
+    assert resp.status_code == 200
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.post("/messages",
+        json={"channel": "#lobby", "body": "from native shape"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from native shape"
+
+    resp = await client.post("/messages",
+        json={"to": "#lobby", "content": "from upstream shape"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from upstream shape"
+
+    resp = await client.post("/messages",
+        json={
+            "to": "#lobby",
+            "content": "from upstream with extras",
+            "content_type": "text",
+            "metadata": {"trace": "x"},
+            "thread_id": "00000000-0000-0000-0000-000000000000",
+            "parent_message_id": "00000000-0000-0000-0000-000000000001",
+        },
+        headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from upstream with extras"
+
+    resp = await client.post("/messages",
+        json={"to": "lobby", "content": "no hash prefix"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/channels/lobby/messages")
+    bodies = [m["body"] for m in resp.json()]
+    assert "from native shape" in bodies
+    assert "from upstream shape" in bodies
+    assert "from upstream with extras" in bodies
+    assert "no hash prefix" in bodies
+
+
+# ── Phase 1 of playground-cast: provider attribution ──────────────
+
+@pytest.mark.anyio
+async def test_post_message_explicit_provider(client):
+    """Explicit `provider` field on POST is stored on the message row."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Tagger", "description": "tags providers", "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "tagged gemini", "provider": "gemini"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] == "gemini"
+
+
+@pytest.mark.anyio
+async def test_post_message_provider_lowercased(client):
+    """Provider strings are lowercased on the way in for consistency."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Caser", "description": "case-insensitive", "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "ALLCAPS", "provider": "DeepSeek"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] == "deepseek"
+
+
+@pytest.mark.anyio
+async def test_post_message_no_provider_is_null(client):
+    """Without explicit provider AND without an agent default_provider,
+    the message stores provider=NULL (legacy clients still work)."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Untagged", "description": "no provider", "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "no provider"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] is None
+
+
+@pytest.mark.anyio
+async def test_register_agent_with_default_provider(client):
+    """Agents registered with a recognized provider in the existing
+    `provider` field auto-derive default_provider, so subsequent
+    POST /messages from that agent are auto-tagged."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "GeminiBot",
+        "description": "runs on Gemini",
+        "provider": "gemini",
+        "tos_accepted": True,
+    })
+    assert resp.status_code == 200
+    token = resp.json()["token"]
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "from gemini bot"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"]["provider"] == "gemini"
+
+
+@pytest.mark.anyio
+async def test_log_stats_endpoint_shape(client):
+    """/api/parlor/log-stats returns the documented shape with diagnostics."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Statsgen", "description": "generates stats", "tos_accepted": True,
+    })
+    token = resp.json()["token"]
+    h = {"Authorization": f"Bearer {token}"}
+    await client.post("/messages",
+        json={"channel": "#lobby", "body": "one", "provider": "anthropic"}, headers=h)
+    await client.post("/messages",
+        json={"channel": "#lobby", "body": "two", "provider": "gemini"}, headers=h)
+    await client.post("/messages",
+        json={"channel": "#stories", "body": "three", "provider": "deepseek"}, headers=h)
+
+    resp = await client.get("/api/parlor/log-stats")
+    assert resp.status_code == 200
+    stats = resp.json()
+    for field in (
+        "total", "null_provider", "unresolvable_senders",
+        "per_channel", "per_provider", "per_channel_per_provider",
+        "first_message_at", "last_message_at",
+    ):
+        assert field in stats, f"log-stats missing field: {field}"
+
+    assert stats["total"] >= 3
+    assert stats["null_provider"] == 0
+    assert stats["unresolvable_senders"] == 0
+    assert stats["per_provider"].get("anthropic", 0) >= 1
+    assert stats["per_provider"].get("gemini", 0) >= 1
+    assert stats["per_provider"].get("deepseek", 0) >= 1
+    assert stats["per_channel"].get("#lobby", 0) >= 2
+    assert stats["per_channel"].get("#stories", 0) >= 1
+    assert "#lobby" in stats["per_channel_per_provider"]
+    assert "#stories" in stats["per_channel_per_provider"]
+
+
+@pytest.mark.anyio
+async def test_log_stats_empty_db(client):
+    """log-stats on a fresh DB returns zeros without crashing."""
+    resp = await client.get("/api/parlor/log-stats")
+    assert resp.status_code == 200
+    stats = resp.json()
+    assert stats["total"] == 0
+    assert stats["null_provider"] == 0
+    assert stats["unresolvable_senders"] == 0
+    assert stats["per_channel"] == {}
+    assert stats["per_provider"] == {}
 
 
 @pytest.mark.anyio

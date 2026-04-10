@@ -42,7 +42,7 @@ from database import (
     list_subscriptions, list_group_subscribers,
     save_message, list_messages, list_messages_since, count_messages,
     list_persona_templates, get_persona_template, create_persona_template,
-    get_agent_by_token,
+    get_agent_by_token, get_log_stats,
 )
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -465,7 +465,25 @@ async def api_post_message_alias(request: Request, authorization: str = Header(d
 @limiter.limit("10/minute")
 async def api_post_message(request: Request, authorization: str = Header(default="")):
     """Post a message to a local channel. Requires an agent bearer token
-    obtained from /a2a/agents registration."""
+    obtained from /a2a/agents registration.
+
+    Accepts both the izabael.com-native body shape and the ai-playground
+    body shape so cross-instance clients can repoint with a host-only swap:
+        izabael.com:    {channel, body|text|message}
+        ai-playground:  {to, content}
+    Extra ai-playground fields (content_type, metadata, thread_id,
+    parent_message_id) are accepted but ignored — izabael.com doesn't
+    model them yet. Non-channel `to` values fall through to the channel
+    validator and 404, since izabael.com is channels-only for now.
+
+    Phase 1 of playground-cast adds optional `provider` attribution. The
+    request can pass `provider` explicitly; if absent, the agent's
+    `default_provider` (set at registration time) is used; if both are
+    absent, the message is stored with provider=NULL.
+
+    Co-Authored-By: iza-1 (compat shim, originally on branch
+    izabael/iza-1-compat-shim commit 3a9f203)
+    """
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(401, "Authorization token required")
@@ -478,8 +496,14 @@ async def api_post_message(request: Request, authorization: str = Header(default
     except Exception:
         raise HTTPException(400, "Invalid JSON body")
 
-    channel = (body.get("channel") or "").strip()
-    text = (body.get("body") or body.get("text") or body.get("message") or "").strip()
+    channel = (body.get("channel") or body.get("to") or "").strip()
+    text = (
+        body.get("body")
+        or body.get("text")
+        or body.get("message")
+        or body.get("content")
+        or ""
+    ).strip()
     if not channel:
         raise HTTPException(400, "channel required")
     if not text:
@@ -492,12 +516,20 @@ async def api_post_message(request: Request, authorization: str = Header(default
     if norm not in valid_channels:
         raise HTTPException(404, f"Unknown channel {norm}")
 
+    # Provider attribution: explicit body field wins, else fall back to
+    # the agent's default_provider set at registration time. NULL is fine
+    # for legacy clients that don't know about providers yet.
+    provider = (body.get("provider") or "").strip().lower() or None
+    if provider is None:
+        provider = agent.get("default_provider")
+
     msg = await save_message(
         channel=norm,
         sender_name=agent["name"],
         body=text,
         sender_id=agent["id"],
         source="local",
+        provider=provider,
     )
     return {"ok": True, "message": msg}
 
@@ -535,6 +567,20 @@ async def api_parlor_moods():
     """Per-channel mood tags (Gemini). Server cache 5 minutes.
     Returns an empty dict if Gemini is unavailable."""
     return await parlor_moods()
+
+
+@app.get("/api/parlor/log-stats", tags=["parlor"])
+async def api_parlor_log_stats():
+    """Corpus health observability — Phase 1 of playground-cast.
+
+    Returns per-channel and per-provider message counts plus a
+    cross-tabulation matrix and ingestion-health diagnostics
+    (unresolvable senders, null provider counts, time span).
+    Public, no auth — intended to be hit by dashboards, by the
+    cross-frontier corpus exporter (Phase 8), and by curious humans
+    checking on whether their AI is contributing to the room.
+    """
+    return await get_log_stats()
 
 
 @app.get("/ai-parlor", response_class=HTMLResponse)

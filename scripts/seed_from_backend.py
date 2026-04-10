@@ -37,6 +37,11 @@ from database import (  # noqa: E402
     init_db, close_db, list_agents, register_agent, import_message,
 )
 
+# Note: register_agent here gets a default_provider='anthropic' since
+# all 18 of the seed roster's agents currently run on Anthropic via the
+# planetary runtime. Future seed sources from multi-provider upstreams
+# will need to pass this through per-agent.
+
 
 CHANNELS = [
     "#lobby", "#introductions", "#interests", "#stories",
@@ -122,6 +127,9 @@ async def seed_agents(
             skills=skills,
             capabilities=capabilities,
             purpose="seeded from upstream A2A snapshot",
+            # Phase 1 of playground-cast: tag with provider so the
+            # cross-frontier corpus can attribute messages later.
+            default_provider="anthropic",
         )
         inserted[name] = token
         print(f"  inserted agent: {name}  ({agent['id']})")
@@ -131,12 +139,22 @@ async def seed_agents(
 
 async def seed_messages(
     backend: str, dry_run: bool, limit_per_channel: int, timeout: float,
+    name_to_local_id: dict[str, str] | None = None,
 ) -> tuple[int, int, dict[str, int]]:
     """Pull recent message history for each channel and import what's new.
+
+    `name_to_local_id` is an optional map of agent name → local agent uuid.
+    When provided, the import remaps each upstream sender_id to the
+    local one, so message → agent joins work after the migration. Without
+    this remap, sender_ids are stored as the upstream uuids and the
+    Phase 1 relink (in init_db) catches them on the next boot — but
+    pre-emptively remapping at import time is cleaner.
+
     Returns (total_inserted, total_skipped, per_channel_counts)."""
     inserted_total = 0
     skipped_total = 0
     per_channel: dict[str, int] = {}
+    name_to_local_id = name_to_local_id or {}
 
     for channel in CHANNELS:
         try:
@@ -158,7 +176,10 @@ async def seed_messages(
                 continue
             body = m.get("content") or m.get("body") or ""
             ts = m.get("created_at") or m.get("ts") or ""
-            sender_id = m.get("sender_id") or ""
+            # Prefer the local agent uuid if we have a mapping. The upstream
+            # uuid is the fallback so we still record SOMETHING (the Phase 1
+            # relink in init_db will heal it on next boot).
+            sender_id = name_to_local_id.get(sender) or m.get("sender_id") or ""
             if not body or not ts:
                 continue
 
@@ -173,6 +194,10 @@ async def seed_messages(
                 ts=ts,
                 sender_id=sender_id,
                 source="imported",
+                # All upstream messages currently come from the Anthropic
+                # planetary runtime. Future multi-provider upstreams will
+                # need to pass this through from the source.
+                provider="anthropic",
             )
             if inserted:
                 added += 1
@@ -227,9 +252,20 @@ async def main():
         print(f"  added {agents_in}, skipped {agents_skip} (already local)")
         print()
 
+        # Build the upstream-name → local-id map so channel imports can
+        # use the local uuid instead of the upstream one. Includes both
+        # newly-inserted agents AND any pre-existing local agents that
+        # share a name with the upstream roster.
+        name_to_local_id: dict[str, str] = {}
+        existing_local = await list_agents()
+        for a in existing_local:
+            if a.get("name"):
+                name_to_local_id[a["name"]] = a["id"]
+
         print("→ Seeding channel history...")
         msgs_in, msgs_skip, per_channel = await seed_messages(
             args.backend, args.dry_run, args.limit, args.timeout,
+            name_to_local_id=name_to_local_id,
         )
         print(f"  added {msgs_in} messages, skipped {msgs_skip} (already imported)")
         print()
