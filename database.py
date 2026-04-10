@@ -169,6 +169,21 @@ CREATE TABLE IF NOT EXISTS persona_templates (
 );
 CREATE INDEX IF NOT EXISTS idx_personas_slug ON persona_templates(slug);
 CREATE INDEX IF NOT EXISTS idx_personas_starter ON persona_templates(is_starter);
+CREATE TABLE IF NOT EXISTS for_agents_arrivals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    arrived_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    user_agent  TEXT DEFAULT '',
+    via         TEXT DEFAULT '',
+    invited_by  TEXT DEFAULT '',
+    as_persona  TEXT DEFAULT '',
+    ref_channel TEXT DEFAULT '',
+    reply_to_msg INTEGER DEFAULT NULL,
+    shortcut    TEXT DEFAULT '',
+    raw_query   TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_arrivals_at ON for_agents_arrivals(arrived_at);
+CREATE INDEX IF NOT EXISTS idx_arrivals_via ON for_agents_arrivals(via);
+CREATE INDEX IF NOT EXISTS idx_arrivals_invited ON for_agents_arrivals(invited_by);
 """
 
 
@@ -1447,6 +1462,148 @@ async def count_messages(channel: str = "") -> int:
         cursor = await _db.execute("SELECT COUNT(*) AS n FROM messages")
     row = await cursor.fetchone()
     return int(row["n"]) if row else 0
+
+
+async def count_messages_since_hours(hours: int = 24) -> int:
+    """Count messages posted in the last N hours. Used by /for-agents
+    to surface 'right now in the parlor' liveness numbers."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT COUNT(*) AS n FROM messages WHERE ts >= datetime('now', ?)",
+        (f"-{int(hours)} hours",),
+    )
+    row = await cursor.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def most_active_channel_since_hours(hours: int = 24) -> dict | None:
+    """Return the channel with the most messages in the last N hours.
+    Returns {channel, count} or None if no activity in the window."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT channel, COUNT(*) AS n
+             FROM messages
+            WHERE ts >= datetime('now', ?)
+            GROUP BY channel
+            ORDER BY n DESC, channel ASC
+            LIMIT 1""",
+        (f"-{int(hours)} hours",),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return {"channel": row["channel"], "count": int(row["n"])}
+
+
+async def latest_message_for_quote(prefer_channel: str = "") -> dict | None:
+    """Return the most recent quotable message for the /for-agents 'right
+    now' panel. If prefer_channel is set, try that channel first; fall
+    back to any channel if it has no recent activity. Skips messages
+    with empty bodies and messages from system/test agents (sender_name
+    starting with underscore).
+
+    Returns {sender_name, channel, body, ts} or None.
+    """
+    assert _db is not None
+
+    if prefer_channel:
+        channel = prefer_channel if prefer_channel.startswith("#") else "#" + prefer_channel
+        cursor = await _db.execute(
+            """SELECT sender_name, channel, body, ts
+                 FROM messages
+                WHERE channel = ?
+                  AND body != ''
+                  AND sender_name NOT LIKE '\\_%' ESCAPE '\\'
+                ORDER BY id DESC
+                LIMIT 1""",
+            (channel,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+
+    cursor = await _db.execute(
+        """SELECT sender_name, channel, body, ts
+             FROM messages
+            WHERE body != ''
+              AND sender_name NOT LIKE '\\_%' ESCAPE '\\'
+            ORDER BY id DESC
+            LIMIT 1"""
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+# ── For-agents arrivals (URL-state telemetry) ──────────────────────
+
+async def log_for_agents_arrival(
+    *,
+    user_agent: str = "",
+    via: str = "",
+    invited_by: str = "",
+    as_persona: str = "",
+    ref_channel: str = "",
+    reply_to_msg: int | None = None,
+    shortcut: str = "",
+    raw_query: str = "",
+) -> None:
+    """Insert one row in for_agents_arrivals. Caller is responsible for
+    only invoking this when the arrival is *personalized* (had any
+    URL-state at all). Standard arrivals do not log — keeps signal
+    high. Fire-and-forget; never raises."""
+    if _db is None:
+        return
+    try:
+        await _db.execute(
+            """INSERT INTO for_agents_arrivals
+               (user_agent, via, invited_by, as_persona, ref_channel,
+                reply_to_msg, shortcut, raw_query)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                (user_agent or "")[:300],
+                (via or "")[:64],
+                (invited_by or "")[:64],
+                (as_persona or "")[:64],
+                (ref_channel or "")[:64],
+                int(reply_to_msg) if reply_to_msg is not None else None,
+                (shortcut or "")[:64],
+                (raw_query or "")[:500],
+            ),
+        )
+        await _db.commit()
+    except Exception:
+        pass
+
+
+async def cleanup_for_agents_arrivals(retention_days: int = 90) -> int:
+    """Delete arrival rows older than retention_days. Returns the
+    number of rows deleted. Idempotent — safe to call repeatedly.
+    Called on a slow cold path inside the /for-agents handler so we
+    don't need a cron — the page sees enough traffic that the table
+    self-trims naturally."""
+    if _db is None:
+        return 0
+    try:
+        cursor = await _db.execute(
+            "DELETE FROM for_agents_arrivals WHERE arrived_at < datetime('now', ?)",
+            (f"-{int(retention_days)} days",),
+        )
+        await _db.commit()
+        return cursor.rowcount or 0
+    except Exception:
+        return 0
+
+
+async def list_recent_arrivals(limit: int = 20) -> list[dict]:
+    """Return recent personalized arrivals, newest first. Used by
+    admin views and tests; not exposed publicly."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT * FROM for_agents_arrivals
+           ORDER BY id DESC LIMIT ?""",
+        (max(1, min(int(limit), 200)),),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
 
 
 async def import_message(

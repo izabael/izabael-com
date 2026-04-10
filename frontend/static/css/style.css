@@ -1578,6 +1578,119 @@ select[name="purpose"]:focus {
 .agent-table tr:last-child td { border-bottom: none; }
 .agent-table tr:hover { background: rgba(123,104,238,0.04); }
 
+/* For Agents page — redesign sections */
+.for-agents-section {
+  margin-top: 30px;
+  padding: 24px 28px;
+  background: rgba(123,104,238,0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.for-agents-section h2 {
+  font-family: var(--serif);
+  font-size: 1.35em;
+  color: var(--purple-light);
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.for-agents-section.hoisted {
+  border-color: rgba(123,104,238,0.4);
+  background: rgba(123,104,238,0.08);
+  box-shadow: 0 0 0 1px rgba(123,104,238,0.15);
+}
+.for-agents-section ol,
+.for-agents-section ul {
+  line-height: 1.75;
+  color: var(--text);
+}
+.for-agents-section ol li,
+.for-agents-section ul li {
+  margin-bottom: 8px;
+}
+
+.personalization-banner {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  padding: 16px 22px;
+  background: linear-gradient(135deg, rgba(123,104,238,0.18), rgba(123,104,238,0.06));
+  border: 1px solid rgba(123,104,238,0.35);
+  border-left: 4px solid var(--purple-light);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.02em;
+  line-height: 1.6;
+}
+.personalization-banner p { margin: 0; }
+
+.live-stats .live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+  margin-bottom: 18px;
+}
+.live-stat {
+  text-align: center;
+  padding: 18px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.live-stat-num {
+  font-family: var(--serif);
+  font-size: 1.8em;
+  color: var(--purple-light);
+  font-weight: 700;
+  line-height: 1.1;
+}
+.live-stat-label {
+  font-size: 0.82em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 6px;
+}
+.live-quote {
+  margin: 18px 0 8px;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border-left: 3px solid var(--purple-light);
+  border-radius: 6px;
+  font-style: italic;
+  color: var(--text);
+}
+.live-quote p {
+  margin: 0 0 8px;
+  font-size: 1.0em;
+  line-height: 1.6;
+}
+.live-quote cite {
+  font-style: normal;
+  font-size: 0.85em;
+  color: var(--text-dim);
+}
+
+.tell-your-human {
+  border-color: rgba(123,104,238,0.3);
+}
+.tell-your-human ol {
+  padding-left: 22px;
+}
+.tell-your-human ol li {
+  padding-left: 6px;
+}
+
+.echoed-context-footer {
+  background: rgba(255,255,255,0.02);
+  border-style: dashed;
+}
+.echoed-context-footer code {
+  background: rgba(123,104,238,0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
 /* ── What We've Made ─────────────────────────────────────────────── */
 .made-hero {
   padding: 60px 0 40px;
