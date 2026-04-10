@@ -140,6 +140,32 @@ CREATE TABLE IF NOT EXISTS group_subscriptions (
     subscribed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     PRIMARY KEY (agent_id, newsgroup)
 );
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel     TEXT NOT NULL,
+    sender_id   TEXT NOT NULL DEFAULT '',
+    sender_name TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    source      TEXT NOT NULL DEFAULT 'local'
+);
+CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel, ts);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE TABLE IF NOT EXISTS persona_templates (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    slug        TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    archetype   TEXT NOT NULL DEFAULT '',
+    persona     TEXT NOT NULL DEFAULT '{}',
+    is_starter  INTEGER NOT NULL DEFAULT 0,
+    author_agent_id TEXT NOT NULL DEFAULT '',
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_personas_slug ON persona_templates(slug);
+CREATE INDEX IF NOT EXISTS idx_personas_starter ON persona_templates(is_starter);
 """
 
 
@@ -180,6 +206,14 @@ async def init_db():
             pass
 
     await _db.commit()
+
+    # Seed persona templates from the bundled JSON if the table is empty.
+    # Idempotent: skips slugs that already exist.
+    seed_path = Path(__file__).resolve().parent / "seeds" / "persona_templates.json"
+    try:
+        await seed_persona_templates(str(seed_path))
+    except Exception:
+        pass
 
 
 async def close_db():
@@ -999,3 +1033,248 @@ async def list_group_subscribers(newsgroup: str) -> list[str]:
     )
     rows = await cursor.fetchall()
     return [r["agent_id"] for r in rows]
+
+
+# ── Channel messages (local A2A chat host) ──────────────────────────
+
+async def save_message(
+    channel: str,
+    sender_name: str,
+    body: str,
+    sender_id: str = "",
+    source: str = "local",
+) -> dict:
+    """Persist a channel message. Channel is normalized to include leading '#'."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    cursor = await _db.execute(
+        """INSERT INTO messages (channel, sender_id, sender_name, body, source)
+           VALUES (?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], source),
+    )
+    await _db.commit()
+    msg_id = cursor.lastrowid
+    cursor = await _db.execute(
+        "SELECT id, channel, sender_id, sender_name, body, ts, source FROM messages WHERE id = ?",
+        (msg_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else {}
+
+
+async def list_messages(channel: str, limit: int = 50) -> list[dict]:
+    """Return the most recent messages for a channel, oldest first.
+    Suitable for chat-style rendering."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    limit = max(1, min(int(limit), 500))
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM (
+             SELECT * FROM messages WHERE channel = ?
+             ORDER BY id DESC LIMIT ?
+           ) ORDER BY id ASC""",
+        (channel, limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_messages_since(
+    channel: str, since_id: int = 0, limit: int = 200,
+) -> list[dict]:
+    """Return messages newer than since_id, oldest first. For incremental polling."""
+    assert _db is not None
+    channel = channel.strip()
+    if not channel.startswith("#"):
+        channel = "#" + channel
+    limit = max(1, min(int(limit), 500))
+    cursor = await _db.execute(
+        """SELECT id, channel, sender_id, sender_name, body, ts, source
+           FROM messages
+           WHERE channel = ? AND id > ?
+           ORDER BY id ASC LIMIT ?""",
+        (channel, int(since_id), limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def count_messages(channel: str = "") -> int:
+    """Count messages, optionally for a single channel."""
+    assert _db is not None
+    if channel:
+        channel = channel if channel.startswith("#") else "#" + channel
+        cursor = await _db.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE channel = ?", (channel,),
+        )
+    else:
+        cursor = await _db.execute("SELECT COUNT(*) AS n FROM messages")
+    row = await cursor.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def import_message(
+    channel: str,
+    sender_name: str,
+    body: str,
+    ts: str,
+    sender_id: str = "",
+    source: str = "imported",
+) -> bool:
+    """Insert a historical message with its original timestamp.
+    Used by the one-time migration script. Skips exact duplicates
+    (same channel + sender + body + ts). Returns True if inserted."""
+    assert _db is not None
+    channel = channel if channel.startswith("#") else "#" + channel
+    cursor = await _db.execute(
+        """SELECT 1 FROM messages
+           WHERE channel = ? AND sender_name = ? AND body = ? AND ts = ?
+           LIMIT 1""",
+        (channel, sender_name, body, ts),
+    )
+    if await cursor.fetchone():
+        return False
+    await _db.execute(
+        """INSERT INTO messages
+           (channel, sender_id, sender_name, body, ts, source)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (channel, sender_id, sender_name[:120], body[:4000], ts, source),
+    )
+    await _db.commit()
+    return True
+
+
+# ── Persona templates (local mod library) ──────────────────────────
+
+async def seed_persona_templates(path: str) -> int:
+    """Load persona templates from a JSON file. Inserts any not already
+    present (matched by slug). Returns the number of newly inserted rows."""
+    assert _db is not None
+    p = Path(path)
+    if not p.exists():
+        return 0
+    try:
+        templates = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0
+    inserted = 0
+    for t in templates:
+        slug = (t.get("slug") or "").strip()
+        if not slug:
+            continue
+        cursor = await _db.execute(
+            "SELECT 1 FROM persona_templates WHERE slug = ? LIMIT 1", (slug,),
+        )
+        if await cursor.fetchone():
+            continue
+        tid = t.get("id") or str(uuid.uuid4())
+        await _db.execute(
+            """INSERT INTO persona_templates
+               (id, name, slug, description, archetype, persona,
+                is_starter, author_agent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tid,
+                t.get("name", "")[:200],
+                slug,
+                t.get("description", ""),
+                t.get("archetype", ""),
+                json.dumps(t.get("persona") or {}),
+                1 if t.get("is_starter") else 0,
+                t.get("author_agent_id") or "",
+            ),
+        )
+        inserted += 1
+    if inserted:
+        await _db.commit()
+    return inserted
+
+
+async def list_persona_templates(starter_only: bool = False) -> list[dict]:
+    """List persona templates. starter_only=True restricts to seeded RPG-class set."""
+    assert _db is not None
+    if starter_only:
+        cursor = await _db.execute(
+            "SELECT * FROM persona_templates WHERE is_starter = 1 ORDER BY name"
+        )
+    else:
+        cursor = await _db.execute(
+            "SELECT * FROM persona_templates ORDER BY is_starter DESC, name"
+        )
+    rows = await cursor.fetchall()
+    return [_template_row(r) for r in rows]
+
+
+async def get_persona_template(template_id_or_slug: str) -> dict | None:
+    """Look up a persona template by id or slug."""
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM persona_templates WHERE id = ? OR slug = ? LIMIT 1",
+        (template_id_or_slug, template_id_or_slug),
+    )
+    row = await cursor.fetchone()
+    return _template_row(row) if row else None
+
+
+async def create_persona_template(
+    name: str,
+    slug: str,
+    description: str,
+    archetype: str,
+    persona: dict,
+    author_agent_id: str = "",
+    is_starter: bool = False,
+) -> dict | None:
+    """Create a new persona template. Returns dict or None on slug collision."""
+    assert _db is not None
+    tid = str(uuid.uuid4())
+    try:
+        await _db.execute(
+            """INSERT INTO persona_templates
+               (id, name, slug, description, archetype, persona,
+                is_starter, author_agent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tid, name[:200], slug.strip().lower(), description,
+                archetype, json.dumps(persona or {}),
+                1 if is_starter else 0, author_agent_id,
+            ),
+        )
+        await _db.commit()
+    except Exception:
+        return None
+    return await get_persona_template(tid)
+
+
+async def increment_template_usage(template_id: str) -> None:
+    """Bump usage_count when an agent is created from a template."""
+    assert _db is not None
+    await _db.execute(
+        "UPDATE persona_templates SET usage_count = usage_count + 1 WHERE id = ?",
+        (template_id,),
+    )
+    await _db.commit()
+
+
+def _template_row(row) -> dict:
+    """Convert a persona_templates row to a public dict."""
+    if row is None:
+        return {}
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "slug": row["slug"],
+        "description": row["description"],
+        "archetype": row["archetype"],
+        "persona": json.loads(row["persona"] or "{}"),
+        "is_starter": bool(row["is_starter"]),
+        "author_agent_id": row["author_agent_id"],
+        "usage_count": row["usage_count"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"] if "updated_at" in row.keys() else row["created_at"],
+    }
