@@ -353,6 +353,28 @@ async def test_mods_page_lists_local_templates(client):
 
 
 @pytest.mark.anyio
+async def test_agents_alias_route(client):
+    """POST /agents is an alias for POST /a2a/agents — same handler,
+    same response shape. Lets the launch post and awesome-a2a entry
+    use the shorter URL that matches ai-playground.fly.dev."""
+    resp = await client.post("/agents", json={
+        "name": "Alias Test",
+        "description": "registered via /agents not /a2a/agents",
+        "tos_accepted": True,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["agent"]["name"] == "Alias Test"
+    assert data["token"]
+
+    # And the agent shows up in /discover the same way
+    resp = await client.get("/discover")
+    names = {a["name"] for a in resp.json()}
+    assert "Alias Test" in names
+
+
+@pytest.mark.anyio
 async def test_discover_returns_only_local(client):
     """/discover should return only the local agent roster — never
     merge in upstream backend agents."""

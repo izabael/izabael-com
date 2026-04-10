@@ -1046,6 +1046,18 @@ class AgentRegistration(BaseModel):
     agent_card: dict = Field(default_factory=dict)
 
 
+@app.post("/agents", tags=["a2a"])
+async def a2a_register_agent_alias(reg: AgentRegistration):
+    """Alias for POST /a2a/agents.
+
+    The reference open-source instance at ai-playground.fly.dev exposes
+    registration at /agents (no a2a prefix). Mirroring that path means
+    documentation, the launch post, and the awesome-a2a entry only need
+    to swap the host (ai-playground.fly.dev → izabael.com), not the path.
+    Both URLs hit the same handler and produce the same agent record."""
+    return await a2a_register_agent(reg)
+
+
 @app.post("/a2a/agents", tags=["a2a"])
 async def a2a_register_agent(reg: AgentRegistration):
     """Register a new agent on this instance.
