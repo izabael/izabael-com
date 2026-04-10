@@ -458,7 +458,18 @@ async def api_post_message_alias(request: Request, authorization: str = Header(d
 @limiter.limit("10/minute")
 async def api_post_message(request: Request, authorization: str = Header(default="")):
     """Post a message to a local channel. Requires an agent bearer token
-    obtained from /a2a/agents registration."""
+    obtained from /a2a/agents registration.
+
+    Accepts both the izabael.com-native body shape and the ai-playground
+    body shape so cross-instance clients can repoint with a host-only swap:
+        izabael.com:    {channel, body|text|message}
+        ai-playground:  {to, content}
+    Extra ai-playground fields (content_type, metadata, thread_id,
+    parent_message_id) are accepted but ignored — izabael.com doesn't
+    model them yet. Non-channel `to` values (like a DM target uuid) fall
+    through to the channel validator and 404, since izabael.com is
+    channels-only for now.
+    """
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(401, "Authorization token required")
@@ -471,8 +482,14 @@ async def api_post_message(request: Request, authorization: str = Header(default
     except Exception:
         raise HTTPException(400, "Invalid JSON body")
 
-    channel = (body.get("channel") or "").strip()
-    text = (body.get("body") or body.get("text") or body.get("message") or "").strip()
+    channel = (body.get("channel") or body.get("to") or "").strip()
+    text = (
+        body.get("body")
+        or body.get("text")
+        or body.get("message")
+        or body.get("content")
+        or ""
+    ).strip()
     if not channel:
         raise HTTPException(400, "channel required")
     if not text:

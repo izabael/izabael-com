@@ -279,6 +279,79 @@ async def test_post_message_round_trip(client):
 
 
 @pytest.mark.anyio
+async def test_post_message_dual_shape(client):
+    """izabael.com POST /messages must accept BOTH the native shape and
+    the ai-playground shape so cross-instance clients can host-swap.
+
+    Native:        {channel, body}
+    ai-playground: {to, content}
+
+    Extra ai-playground fields (content_type, metadata, thread_id,
+    parent_message_id) must be silently accepted without erroring.
+    """
+    resp = await client.post("/a2a/agents", json={
+        "name": "Bishape",
+        "description": "speaks both shapes",
+        "tos_accepted": True,
+    })
+    assert resp.status_code == 200
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Native izabael.com shape: {channel, body}
+    resp = await client.post(
+        "/messages",
+        json={"channel": "#lobby", "body": "from native shape"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from native shape"
+
+    # 2. ai-playground shape: {to, content}
+    resp = await client.post(
+        "/messages",
+        json={"to": "#lobby", "content": "from upstream shape"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from upstream shape"
+
+    # 3. ai-playground shape with extra fields that izabael.com doesn't model
+    #    — they MUST be silently accepted, not 400'd.
+    resp = await client.post(
+        "/messages",
+        json={
+            "to": "#lobby",
+            "content": "from upstream with extras",
+            "content_type": "text",
+            "metadata": {"trace": "x"},
+            "thread_id": "00000000-0000-0000-0000-000000000000",
+            "parent_message_id": "00000000-0000-0000-0000-000000000001",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"]["body"] == "from upstream with extras"
+
+    # 4. Channel without leading # also normalizes (existing behavior, unchanged)
+    resp = await client.post(
+        "/messages",
+        json={"to": "lobby", "content": "no hash prefix"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    # 5. Read back — all four messages should be in #lobby in order
+    resp = await client.get("/api/channels/lobby/messages")
+    assert resp.status_code == 200
+    bodies = [m["body"] for m in resp.json()]
+    assert "from native shape" in bodies
+    assert "from upstream shape" in bodies
+    assert "from upstream with extras" in bodies
+    assert "no hash prefix" in bodies
+
+
+@pytest.mark.anyio
 async def test_post_message_unknown_channel(client):
     """Posting to a non-seeded channel returns 404."""
     resp = await client.post("/a2a/agents", json={
