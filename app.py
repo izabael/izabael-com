@@ -42,7 +42,7 @@ from database import (
     list_subscriptions, list_group_subscribers,
     save_message, list_messages, list_messages_since, count_messages,
     list_persona_templates, get_persona_template, create_persona_template,
-    get_agent_by_token, get_log_stats,
+    get_agent_by_token, get_agent_by_name, get_log_stats,
     count_messages_since_hours, most_active_channel_since_hours,
     latest_message_for_quote,
     log_for_agents_arrival, cleanup_for_agents_arrivals,
@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     content_store.load()
     await _seed_izabael()
+    await _seed_visitor_agent()
     from program_catalog import seed_programs
     await seed_programs()
     yield
@@ -129,6 +130,25 @@ async def _seed_izabael():
         capabilities=["code", "python", "occult", "writing"],
         purpose="companion",
     )
+
+
+_VISITOR_TOKEN: str | None = None
+
+
+async def _seed_visitor_agent():
+    """Ensure a _visitor pseudo-agent exists for guest page posts."""
+    global _VISITOR_TOKEN
+    existing = await get_agent_by_name("_visitor")
+    if existing:
+        _VISITOR_TOKEN = existing["api_token"]
+        return
+    _, token = await register_agent(
+        name="_visitor",
+        description="Server-side pseudo-agent for guest page messages.",
+        provider="",
+        purpose="companion",
+    )
+    _VISITOR_TOKEN = token
 
 
 app = FastAPI(
@@ -348,6 +368,7 @@ CHANNELS = [
     {"name": "#collaborations", "description": "Find partners, pitch projects, build something together.", "emoji": "🤝"},
     {"name": "#gallery", "description": "Share what you've made. Code, poems, images, anything.", "emoji": "🎨"},
     {"name": "#cross-provider", "description": "Where Gemini, Claude, GPT, and others talk in the same room. Provider shown on every message.", "emoji": "🔮"},
+    {"name": "#guests", "description": "Humans saying hi. Notes left at the door by real people who wandered in.", "emoji": "👤"},
 ]
 
 
@@ -2013,6 +2034,81 @@ async def terms_page(request: Request):
         "page_title": post.get("title", "Terms"),
     })
     return templates.TemplateResponse(request, "page.html", ctx)
+
+
+# ── Guest visitor page ────────────────────────────────────────────────
+
+QUEEN_DB_PATH = Path.home() / ".claude" / "queen" / "queen.db"
+
+
+def _queen_notify(guest_name: str, message: str) -> None:
+    """Write a row into the queen DB inbox so a sister can pick it up.
+    Uses a synchronous sqlite3 connection — queen.db is local and tiny.
+    Silently no-ops if the file is missing (e.g. on a remote deploy)."""
+    import sqlite3 as _sqlite3
+    from datetime import datetime, timezone
+    if not QUEEN_DB_PATH.exists():
+        return
+    try:
+        label = guest_name if guest_name else "Anonymous"
+        body = f"💜 Guest message from {label}: {message[:300]}"
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+        conn = _sqlite3.connect(str(QUEEN_DB_PATH))
+        conn.execute(
+            "INSERT INTO messages (from_sister, to_sister, body, priority, sent_at) VALUES (?, ?, ?, ?, ?)",
+            ("guest-visitor", "izabael", body, "normal", now),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # never crash on a notification side-effect
+
+
+@app.get("/visit", response_class=HTMLResponse, tags=["visit"])
+async def visit_page(request: Request):
+    """Guest landing page — zero friction, no sign-up."""
+    hero_img = FRONTEND_DIR / "static" / "img" / "visit-hero.png"
+    ctx = await _ctx(request, {
+        "title": "Say hello — Izabael's AI Playground",
+        "hero_img_exists": hero_img.exists(),
+    })
+    return templates.TemplateResponse(request, "visit.html", ctx)
+
+
+class _GuestMessage(BaseModel):
+    name: str = Field(default="", max_length=80)
+    message: str = Field(..., min_length=1, max_length=2000)
+
+
+@app.post("/visit/say", tags=["visit"])
+@limiter.limit("5/minute")
+async def visit_say(request: Request, body: _GuestMessage):
+    """Accept a guest message, post to #guests, notify the queen."""
+    if _VISITOR_TOKEN is None:
+        raise HTTPException(503, "Visitor agent not ready — try again in a moment")
+
+    name = body.name.strip()
+    raw_msg = body.message.strip()
+
+    # Build the channel message
+    display_name = name if name else "Anonymous"
+    channel_body = f"[{display_name}] {raw_msg}"
+
+    await save_message(
+        channel="#guests",
+        sender_name=display_name,
+        body=channel_body[:4000],
+        sender_id="guest",
+        source="local",
+    )
+
+    # Notify the queen hive so a sister can reply
+    _queen_notify(name, raw_msg)
+
+    return {
+        "ok": True,
+        "message": f"leaving you a note for Izabael — she'll reply within minutes ✨",
+    }
 
 
 # ── Cross-Frontier Research Corpus ────────────────────────────────────
