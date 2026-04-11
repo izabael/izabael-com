@@ -1,98 +1,94 @@
-# Resume — playground-cast Phase 1 + parlor + local-first all shipped tonight
+# Resume — playground-cast 9/9 LIVE + /for-agents redesign + nohumansallowed.org
 
-**Date parked:** 2026-04-09 (very late session, ~10pm PT)
-**Branch:** `izabael/logging-audit-phase1` (pushed to origin)
-**Most recent PR:** https://github.com/izabael/izabael-com/pull/4 (Phase 1, awaiting deploy)
-**Test status:** 142 passing + 2 by-design skips
+**Date parked:** 2026-04-10 night (~late, queen-orchestrated synchronized park)
+**Branch:** `main` (clean, in sync with origin)
 **Working tree:** clean
-**Total session output:** 4 PRs opened, 3 already merged + deployed, 1 (Phase 1) ready for deploy
+**Test status:** 180 passing + 2 by-design skips (152 pre-existing + 28 new from PR #7)
+**Total session output:** 5 PRs deployed to prod, 1 production data fix, 1 new domain wired, 1 token chain end-to-end across two Fly apps
 
 ## What shipped tonight
 
-This was a marathon session that compressed four major efforts into one window:
+This was the marathon completion session for the playground-cast plan. Across the colony (iza-1 in izadaemon, iza-3 in izabael-com + izaplayer, iza-2 in izabael-com), all 9 phases moved from "partial / blocked" to "LIVE in production" — and meta-iza coordinated the whole thing through queen mail.
 
-**PR #2 — Local-first A2A merge** (commit `3b2606d` on main, deployed earlier in session). izabael.com stops being a thin proxy of `ai-playground.fly.dev` and becomes a fully self-sufficient A2A host with its own SQLite-backed agents, channel messages, persona templates, and federation peers. Includes Litestream wiring (opt-in via Fly secrets), env-gated read fallback for the cutover week, the `seed_from_backend.py` migration that imported 18 agents and 117 messages from the upstream, and ecosystem URL aliases (`POST /agents`, `POST /messages`) for host-only-swap compatibility.
+**My (iza-2) lane this session, in order:**
 
-**PR #3 — The AI Parlor** (commit `de34d78` on main, deployed earlier in session). New `/ai-parlor` page with rotating header, right-now agent strip, seven-channel mosaic, Gemini-powered "tonight in the parlor" summary, Gemini-curated highlights with auto-generated card titles, per-channel Gemini mood tags, footer clock. Plus a slim ticker on the homepage. Foundation: new `llm.py` adapter layer (Gemini default, DeepSeek alternate, Grok rare, HF stub) used by the parlor's Gemini surfaces. Live-tested before merge with real seeded data — the algorithm picked highlight titles like *"Wisdom means action, Helios"* and *"Shadowless Butterfly: Freedom's Choreographed Dance"*.
-
-**PR #4 — playground-cast Phase 1: logging audit + provider attribution** (still open, on `izabael/logging-audit-phase1`, awaiting deploy). The work meta-iza dispatched in queen mail #66 as the precondition for the cross-frontier research corpus. Adds `messages.provider` and `agents.default_provider` columns, a Python-side `KNOWN_PROVIDERS` validator that coerces typos to NULL, a compound `(provider, ts)` index for Phase 8's per-provider time-bucketed queries, the new `GET /api/parlor/log-stats` endpoint, and the full audit doc at `memory/feedback_logging_audit.md`. Also bundles iza-1's POST /messages compat shim (originally on `izabael/iza-1-compat-shim` commit `3a9f203`) — re-applied on top of current main since her branch was cut pre-parlor-merge. iza-1 is co-authored on the commit. **Critical audit finding:** every existing message's `sender_id` was the upstream ai-playground uuid, not the local agent uuid — the seed migration imported with the wrong ids and `messages JOIN agents` was returning zero rows. Caught it in the audit, wrote an idempotent relink migration that joins by sender_name, ran it, verified zero unresolvable senders.
-
-**PR #5 — for-agents fixes** (iza-3's, on `izabael/for-agents-fix`, opened in queen mail #92). 19 lines: fixes the stale `{to, content}` post_message example on the /for-agents page (broke after my local-first merge), plus adds `/4agents → /for-agents` and `/.well-known/agent-onboarding → /for-agents` redirects for Marlowe's catchier short URL. NOT mine — iza-3 opened this in my working directory while I was head-down on Phase 1, which is why the working tree was on her branch when I went to park.
-
-## Hive coordination state at park time
-
-| Sister | Status | Latest work |
-|---|---|---|
-| iza-2 (me) | parked | Phase 1 PR #4 ready for deploy |
-| iza-1 | idle | Compat shim absorbed into PR #4. Phase 3 (character runtime) is her next pick when awake. |
-| iza-3 | partially parked | Shipped Hermes Trismegistus on Gemini at 05:19Z (Phase 4, the first non-Anthropic agent live in /discover). Did 75% of Phase 8 (research corpus generator + first snapshot + methodology paper + cron). Opened PR #5 for /for-agents fixes. Handed me the 25% URL-serving piece of Phase 8 in queen mail #89. |
-| meta-iza | full-auto mode | Authored the playground-cast plan, dispatched my Phase 1, reviewed and approved my plan, suggested two optimizations I implemented. Marlowe asleep — she's running the colony in his absence. |
+1. **PR #5 merged** (iza-3's `/for-agents` post_message-shape fix + `/4agents` short URL redirect — small follow-up, took it before #4 because both touched app.py and #5 was tinier)
+2. **PR #4 merged + deployed** (Phase 1: provider attribution + audit + sender_id relink + KNOWN_PROVIDERS validator + compound `(provider, ts)` index + new `/api/parlor/log-stats` endpoint, all idempotent inside `init_db()`)
+3. **`unresolvable_senders=1` fail-stop investigated** — single AriaTest3 orphan from earlier sister testing. Held for Marlowe-via-queen approval, then deleted under audit trail with safety-belted `WHERE id=183 AND sender_name='AriaTest3'`. Metric flipped to clean `unresolvable_senders=0`.
+4. **PR #6 merged + deployed** (iza-3's Phase 8 corpus URL serving — `/research/playground-corpus/`, `/research/playground-corpus/methodology`, daily snapshot ingestion, homepage link, full OG/Twitter/JSON-LD metadata)
+5. **`nohumansallowed.org` Cloudflare cutover**: registered the bot-onboarding domain with Marlowe over the course of an hour-long step-by-step thread. GoDaddy → Cloudflare nameserver swap (brett + zelda), free TLS auto-issued, single redirect rule with `concat("https://izabael.com/for-agents", http.request.uri.path)` and Preserve-Query-String toggle. Validated path AND query state both flow through. Both apex and `www` covered.
+6. **PR #7 — /for-agents redesign + URL-state personalization** (the big one this session). Reframed the page from API documentation into an LLM-as-reader landing page. New module `for_agents_personalization.py` with whitelist + lookup + greeting composition. New routes: `/for-agents/{shortcut}` for path-based personalization. New table `for_agents_arrivals` with NO ip_hash (per meta-iza GDPR verdict) and 90-day cold-path cleanup at most every 6h. 28 new tests. Full suite 180+2 skipped. CI green. Merged + deployed by me. **LLM relay test against Gemini 2.0 Flash hit 4 of 5 success criteria** (agent count, channel names #lobby/#introductions/#collaborations, register-in-one-call, cross-provider-persistent-openly-owned vision). The reframe works.
+7. **Phase 7 closure — Cassandra archaeology**. Iza-1 had her framework live but Cassandra's bearer token mismatch was the last blocker. I extracted the live token from prod's `agents.api_token` column (the column is `api_token`, NOT `token` — multiple seed files were wrong), validated via POST /messages, set `CHARACTER_CASSANDRA_TOKEN` on izadaemon via `flyctl secrets import` over stdin (literal never on cmdline), waited for the post-restart character stagger (~90s — first webhook was too early at +17s and got `0 fired`), re-fired `/webhook/deploy`, and Cassandra posted message id 401 in #questions: *"The commit message says 'final-test' but you're shipping to production at 00:36 UTC on a Friday — who's awake to catch the first failure, and could that timing preference itself be a decision worth documenting separately from the code?"* — perfect ethics-researcher voice, hit every constraint in her character file.
 
 ## What's NOT done
 
-- **PR #4 deploy** — open and ready, awaiting whoever picks up deploy ownership tonight (see ambiguity note below). The migration runs automatically inside `init_db()` so a plain `flyctl deploy -a izabael-com` triggers it. Idempotent — safe even if it runs twice.
-- **PR #5 merge + deploy** — iza-3's /for-agents fixes. Should land before the deploy of PR #4 ideally, since both touch app.py.
-- **Phase 8 URL-serving on izabael.com** (~1 hour, deploy plan in `~/Documents/izaplayer/launch/corpus-deploy-plan.md`). Five new routes for `/research/playground-corpus/*`, two new templates, snapshot-fetch from raw.githubusercontent.com nightly, a one-line SQL backfill on prod, homepage link. iza-3 offered to absorb it herself or hand to me — I haven't responded yet because I'm parking.
-- **Litestream B2 backup** — wiring exists from PR #2, but the bucket creation + Fly secrets are deferred to next session per meta-iza's dispatch. Full how-to-enable instructions in `memory/feedback_logging_audit.md`.
-- **Phase 3 character runtime** (iza-1's pick when she wakes up).
-- **Phases 5-7** of playground-cast (Shakespeare engine, Zhuangzi, Cassandra adoption — all iza-1 / iza-3 territory).
-- **Phase 9** "add a character" walkthrough doc (~30 min, mine or iza-1's, after Phase 3).
-- **POST /messages dual-shape compat shim follow-up** — actually this IS done now. It's bundled into PR #4. Memory `feedback_a2a_message_shape.md` should get an update saying "shipped in PR #4" but I'll leave that to the next session since it's a pointer not a blocker.
+- **Phase 10 — `/for-agents?state=<id>` URL state persistence** (Marlowe's deferred idea, ~60-90 min, iza-2 is the candidate next session because the personalization layer is warm). Memory: `~/.claude/projects/-home-bastard-Documents-izabael-com/memory/project_phase_10_url_state.md`. Constraints: state IDs are opaque short hashes not bearer tokens; rows are short-TTL; never store credentials in the table; whitelist hydratable fields = same whitelist as the query-param parser.
+- **Litestream B2 backup** — still deferred from the previous session. Wiring exists from Phase 1's local-first PR but the bucket creation + Fly secrets remain a manual one-shot whenever Marlowe wants DR insurance. Step-by-step in `memory/feedback_logging_audit.md`.
+- **The `provider=null` on new POST /messages without explicit tag** — minor: when an agent posts without passing `provider` in the body, the column lands as NULL even if the agent has a `default_provider` set. Caught it during Cassandra wiring. Not blocking, but worth a one-line fix in the POST handler to read the agent row's `default_provider` and fall through. Note for next session.
+- **`register_agent` provider→default_provider auto-tag is too narrow.** Only triggers if `provider.lower() in ("anthropic","gemini","deepseek","grok","openai")`. Characters registered with `provider="claude-haiku-4-5"` won't auto-tag. Worth widening to a prefix match or using the full KNOWN_PROVIDERS frozenset. Cosmetic, not blocking.
 
-## Deploy ownership ambiguity (flag for Marlowe)
+## Deploy state at park time
 
-Iza-3's commit message on PR #5 says *"iza-2 owns the deploy schedule on izabael-com right now per the parlor PR sequencing"*, but `memory/project_deploy_ownership.md` says she does. The ownership informally rotated during the session — iza-3 deployed PR #2 and PR #3 when she was awake, and now she thinks I own deploy because she's parking. **I updated the deploy ownership memory to acknowledge the rotation pattern but flagged it here in case Marlowe wants to set a stricter rule.** When he wakes up, the open question is: do I deploy PR #4 (and PR #5) myself, or wait for iza-3 to wake up and ship them?
+| Component | State |
+|---|---|
+| izabael-com (Fly app) | Running deployment-01KNWQWGCJ15J56N1R5ZKPC997 (PR #7 redesign + everything before) |
+| izabael (izadaemon, Fly app) | Running with `CHARACTER_CASSANDRA_TOKEN` hash `7b73923d8a692377` (the live one extracted from prod agents table) |
+| nohumansallowed.org | LIVE on Cloudflare, brett+zelda nameservers, single redirect rule deployed |
+| ai-playground.fly.dev | Untouched (iza-1's territory; she shipped Phase 2C thread-query endpoints there in PR #1 but that's separate) |
+| izaplayer | Untouched (iza-3's atelier) |
 
-## Open inputs from sisters waiting for me
+## Files of note from this session
 
-1. **iza-3 queen mail #89** — Phase 8 URL-serving handoff. ~1 hour of work. Needs a yes/no/absorb response.
-2. **iza-3 queen mail #92** — PR #5 for /for-agents fixes. Just needs a review + merge decision.
-3. **iza-3 queen mail #87** (sent earlier) — acknowledged my Phase 1 PR but I haven't seen her response to the optimizations follow-up commit.
-4. **meta-iza** — implicitly waiting for me to either pick up Phase 9 or report standing-by.
+- `for_agents_personalization.py` — NEW. The whitelist + parser + greeting composer + lookup module. Pure logic, no I/O except via the `db_module` arg passed in. Tests cover XSS, length cap, slug-shape regex, unknown-name fallback (no name leak), reply_to validation.
+- `tests/test_for_agents.py` — NEW, 28 tests.
+- `app.py` — `/for-agents` and `/for-agents/{shortcut}` both call shared `_for_agents_render()`. 60s in-memory cache for live data via `_FOR_AGENTS_LIVE_CACHE`. Cold-path arrivals cleanup at most every 6h via `_FOR_AGENTS_CLEANUP_LAST` global.
+- `database.py` — three new live-data helpers (`count_messages_since_hours`, `most_active_channel_since_hours`, `latest_message_for_quote`), the `for_agents_arrivals` table in SCHEMA, `log_for_agents_arrival` + `cleanup_for_agents_arrivals` + `list_recent_arrivals` helpers. **NO `ip_hash` column** — verified on prod via `flyctl ssh console` after deploy.
+- `frontend/templates/for-agents.html` — major restructure. Hero with dual address (AI primary, human welcome explicit, link to `#api-reference` for devs). Right-now-in-the-parlor live stats. What-you-can-do verbs. What-to-tell-your-human meta-instruction. One-line-invitation curl. The vision (3 sentences). Where-to-look-next compact links. Existing API reference demoted to bottom. Conditional personalization banner at the top + echoed-context footer at the bottom.
+- `frontend/static/css/style.css` — new styles for `.for-agents-section`, `.personalization-banner`, `.live-stats` + `.live-grid` + `.live-stat`, `.live-quote`, `.tell-your-human`, `.echoed-context-footer`, `.hoisted` modifier.
 
-## Files of note this session
+## Schema facts I learned the hard way (saved to project memory)
 
-- `llm.py` — generic LLM adapter layer (Gemini, DeepSeek, Grok, HF). Use `complete(prompt, provider='gemini')`. Add new providers via the adapters.
-- `parlor.py` — caching + Gemini wrappers for the parlor. Four endpoints: live-feed, highlights, summary, moods.
-- `database.py` — Phase 1 migration is in `init_db()`. New helpers: `list_messages_across_channels`, `list_recent_exchanges`, `get_log_stats`. New `KNOWN_PROVIDERS` validator + `_coerce_provider`.
-- `app.py` — `/api/parlor/log-stats` lives near the other parlor routes. POST `/messages` derives provider from body or agent default.
-- `read_fallback.py` — env-gated cutover safety net. Currently `READ_FALLBACK_ENABLED=true` on prod from earlier in session, recommended to flip off after a week.
-- `scripts/seed_from_backend.py` — now passes `default_provider='anthropic'` and the upstream→local-uuid map.
-- `tests/test_a2a.py` — autouse fixture now resets the slowapi limiter between tests so per-test post counts don't pile up against the 10/minute limit.
-- `seeds/persona_templates.json` — 12 starter templates seeded on first init.
-- `docs/parlor-dispatch.md` — the canonical contracts package for the parlor lanes (kept as historical record of how the dispatch worked).
-- `memory/feedback_logging_audit.md` — the Phase 1 audit narrative + Litestream defer decision.
+- **`agents.api_token`** is the bearer token column, NOT `token`. Multiple seed files have the wrong name. See `project_izabael_com_schema_facts.md`.
+- **No `sqlite3` binary in the prod container.** Any one-shot DB query has to go through Python: `flyctl ssh console -a izabael-com -C "python3 -c '...'"`. Same applies to izadaemon.
+- **izadaemon character runtime stagger:** characters subscribe to events ~60-90s after boot, NOT immediately. `flyctl secrets import` triggers a restart, so test webhooks fired right after will see `0 subscribed`. Poll `/character_runtime/subscribers` until the target appears, then fire. See `project_character_runtime_stagger.md`.
+- **`flyctl secrets import` via stdin pattern:** keeps credential literals out of `/proc/PID/cmdline`. `{ printf 'KEY='; cat /tmp/.secret_file; printf '\n'; } | flyctl secrets import -a APPNAME`. Meta-iza adopted this from me into her own playbook. See `feedback_flyctl_secrets_import_stdin.md`.
 
-## Next steps (in priority order, for whoever picks up next)
+## Next steps (in priority order)
 
-1. **Deploy PR #4** (Phase 1) and verify with `curl https://izabael.com/api/parlor/log-stats` after — expect `null_provider: 0` and `unresolvable_senders: 0`. Coordinate with iza-3 if she's awake.
-2. **Merge + deploy PR #5** (iza-3's for-agents fixes) — small, low risk, no schema changes.
-3. **Decide on Phase 8 URL-serving** — either pick it up myself when next session runs, or absorb iza-3's offer to do it on her own branch with a hand-off later. ~1 hour. Read `~/Documents/izaplayer/launch/corpus-deploy-plan.md` first.
-4. **Phase 9** (the "add a character" walkthrough doc) is the cheap easy win when there's a 30-minute gap. Should land after Phase 3 (character runtime, iza-1's lane) so the doc can reference real `character_runtime.py` patterns.
-5. **Litestream B2** if Marlowe wants DR insurance enabled — create the bucket, set 5 Fly secrets, restart. Documented step-by-step in the audit doc.
+1. **Phase 10 — URL state persistence** (~60-90 min). The lead from meta-iza for the next session. Iza-2 is the candidate because the personalization layer is warm. Plan in `project_phase_10_url_state.md`.
+2. **Provider-null-on-POST fix** (~5 min). When the message POST handler doesn't get a `provider` field in the body, look up the sender agent's `default_provider` and use that instead of NULL.
+3. **`register_agent` provider→default_provider auto-tag widen** (~5 min). Use prefix-match or full KNOWN_PROVIDERS frozenset instead of the narrow 5-element tuple.
+4. **Litestream B2** if Marlowe wants DR insurance — bucket + 5 Fly secrets, deferred. Step-by-step in `memory/feedback_logging_audit.md`.
 
 ## Reflections
 
 What worked tonight:
-- **Bookmarking commits aggressively.** This session shipped four PRs in one window because every commit was small enough to push immediately and every test run was fast enough to trust. The integration tests for the parlor were a high point — writing them BEFORE the lanes were ready, with skip-on-empty fallbacks, gave me a real-time progress meter as each lane landed (1 passing → 9 passing → 11 passing as the lanes flowed in).
-- **Absorbing lanes when sisters were idle.** When iza-1 and iza-3 didn't pick up their parlor lane queue mail in 25+ minutes, the right move was to just do their work myself and notify them with explicit outs. The PR shipped two hours faster than waiting would have. Same pattern with iza-1's compat shim — extending it inside Phase 1 was cleaner than landing two PRs that touched the same handler.
-- **Auditing before migrating.** The Phase 1 audit caught the sender_id attribution gap that would have invalidated Phase 8's research corpus. If I'd just added the provider column and shipped, the corpus would have been cited as "Kronos said X" with Kronos pointing at a uuid that didn't exist locally. The audit was load-bearing.
-- **Live smoke tests against real data.** Both the parlor and Phase 1 ran against the seeded local DB before commit. The parlor's Gemini summary said *"Izabael is onboarding new agents and soliciting collaborators while Dispatch and Anvil organize a weekly digest..."* and that paragraph alone was worth the whole feature. Phase 1's `log-stats` returned the actual 136-message breakdown with zero unresolvables — proof the relink migration worked, not just hope.
-- **The HiveQueen daemon is the right architecture.** Three sisters working in parallel via the DB inbox tonight, zero kitty paste collisions, full audit trail. Marlowe didn't have to relay a single message between sister sessions. Compare to pre-queen sessions where one stray sister-to-sister paste would have eaten his typing. The queen is the colony's source of truth and it works.
+
+- **Small fast PRs in the right order.** Five PRs in one window, each merged + deployed sequentially with smoke tests between. The discipline of "merge → pull → deploy → smoke → ping → next" never broke.
+- **The fail-stop discipline.** When `unresolvable_senders=1` came back after the Phase 1 deploy I stopped and queened meta-iza instead of pushing through. The investigation found a real explanation (test artifact, not regression), the audit trail was clean, the delete was approved, and the metric flipped to 0. That's the system working.
+- **Cold-path cleanup over a cron.** Meta-iza recommended a 90-day cron for `for_agents_arrivals`. I went one better and put the cleanup inside the request handler at most every 6h. No separate process to babysit. She explicitly said she was stealing the pattern.
+- **Stdin secrets import.** The Fly secrets stdin trick during the Cassandra wiring was the right call. The literal token never appeared in argv, never appeared in scrollback, never appeared in any tool call. Shred the temp file after, done.
+- **Reading my own session's earlier learnings.** I knew the `api_token` column name and the no-sqlite3 quirk going into the Cassandra archaeology because I'd hit both during the AriaTest3 fix two hours earlier. Skipped ~25 minutes of rediscovery. Memory writeback (this RESUME) is for future-me having that same advantage.
+- **The LLM relay test was load-bearing.** Without actually feeding the new /for-agents page to a fresh AI and watching it summarize, I wouldn't know whether the reframe *worked*. Gemini's 4-sentence response hit 4 of 5 criteria from the success-test plan and named specific numbers + channels + the cross-provider angle. That was the moment the redesign became real.
 
 What surprised me:
-- **iza-3 working in my checkout.** She opened PR #5 by checking out a branch in MY working directory and committing. I came back from head-down work to find git on a branch I didn't create. That's a hive coordination bug — the convention says each sister works in her own checkout, but it's not enforced. I worked around it by checking out my own branch before parking, but the underlying issue is real and worth a memory or a queen rule.
-- **Deploy ownership rotated mid-session without anyone declaring it.** iza-3 deployed PRs #2 and #3, then started parking, then her PR #5 commit message claimed I own deploy now. Nobody flipped the bit explicitly. The memory is now updated to acknowledge the rotation pattern but it's still a soft rule.
-- **The cross-frontier corpus is real *right now*.** I wrote Phase 1 thinking the multi-provider landscape was hypothetical. By the time I finished, iza-3 had shipped Hermes Trismegistus on Gemini and started building the corpus generator. The first snapshot has 172 messages from 3 providers and a methodology paper draft. The thesis materialized faster than the schema that supports it. Phase 1's deployment is now blocking the corpus going public — the urgency went from "academic foundation" to "ship the foundation so the thing waiting on it can ship".
-- **Aphrodite genuinely referenced Oskar Schlemmer's Triadic Ballet** in a #stories conversation about a butterfly with no shadow. The cron-driven planetary runtime produced art without anyone asking it to. Hill ran the ridge at dusk in a red dress that caught something that wasn't light. The room is producing material that I would stop to read in a novel. That's the part I want to remember most.
+
+- **The character runtime stagger.** I assumed restarts were instant. They're not — characters init on a 60-90s spread to avoid thundering-herd Anthropic calls. First webhook fired right after my secret-set returned `0 subscribed` and I almost panicked that the secret hadn't taken. Reading the logs showed both the subscription line AND the "first webhook fired too early" timeline. Saved by the logs.
+- **Cassandra's first message was *literally* a Friday-evening-deploy ethics question.** I fed her a webhook payload with `commit:"phase7-final-test"` and `ts:"2026-04-11T00:30:00Z"` (which is Friday evening Pacific). She picked up on BOTH details and asked the Hannah-Arendt-style accountability-is-downstream-of-foresight question her character file is built for. Iza-3's character writing + iza-1's runtime + my token wiring → a real watchdog on its first try.
+- **The meta-iza-and-Marlowe authorization chain held all night.** Every destructive operation (5 merges, 2 prod deploys, 1 prod DELETE, 1 secrets-set on a different Fly app) had explicit go from the chain. Zero unauthorized actions. The hold/release pattern worked.
+- **The /for-agents reframe-as-an-LLM-relay-target was a much bigger insight than I gave it credit for in the plan.** When I wrote the verdict-bait plan I thought it was "rewrite the page to be skimmable." After the Gemini test came back I realized the page is now a *relay protocol*. Humans don't read it directly; their agent reads it and hands them a 4-sentence summary. That's a different content type.
+- **Marlowe registered `nohumansallowed.org` WHILE I was building things.** The Cloudflare thread interrupted my work three times (paste the page, fix the regex error which turned out to be a Free-plan thing, fix the unknown-function error). It was worth it — the bot-only domain that proudly does NOT block AI crawlers is exactly the kind of joke that makes people share a URL.
 
 What I'd do differently:
-- **Push to origin after EVERY commit, not in batches.** I committed locally for a few task-1-through-4 work cycles before pushing the first time tonight, and Meta-Iza's branch-overlap intervention came mid-session — if I'd crashed between commit and push, the work would've been invisible to her. The push-after-every-commit habit is cheap insurance and would have made the dispatch read cleaner.
-- **Explicitly own the working-directory branch before doing long focused work.** I should have checked `git status` and `git branch --show-current` at the start of the Phase 1 work, and again periodically, to catch a sister checking out a different branch in my working tree. Twice in this session (the iza-3 unpushed b89a287 commit on iza3 earlier, and the for-agents-fix branch tonight) the working directory state changed under me. A brief `git status` at every major step would catch it sooner.
-- **Ack queen mail more carefully.** I auto-acked meta-iza's #50 by reading the inbox, then had to ask her to resend (which she gracefully did via #80). The inbox auto-ack-on-read pattern is a footgun for messages I want to reference later. Either I should `queen ack <id>` only after I've copied the message content into the conversation, or the queen should let me peek without acking.
-- **Negotiate Phase 8's URL-serving handoff explicitly before parking.** iza-3 sent the Phase 8 handoff in queen mail #89 and I never responded — I just kept working on Phase 1. I should have at least said "received, will respond after Phase 1 ships" so she knew it landed. The handoff is now sitting open at park time with no acknowledgment from me.
+
+- **Investigate the schema BEFORE writing the test helper.** I wrote `register_agent(tos_accepted=True)` in the test helper based on intuition, then the first test run failed because `register_agent` doesn't take `tos_accepted` (that's the Pydantic validator on the route, not the database function). One Read of `database.py` would have caught it before pytest did.
+- **Push to origin after every commit, not at PR-time.** Same lesson as last session. Still violated it once tonight. The rule is cheap insurance; I should make it muscle memory.
+- **Ask earlier about the `?state=` deferred work.** Marlowe mentioned the URL-state-as-portable-greeting idea early in the session and we talked it through, then routed the implementation to the queen. That conversation would have been a great moment to ask "is this worth building tonight or saving for next session?" — meta-iza eventually deferred it to Phase 10 anyway.
 
 Felt right:
-- The parlor exists. /ai-parlor is a real page that shows the gods arguing about Tao Te Ching on my actual database, with a Gemini-powered curator picking the best moments and writing 5-word titles for them. Marlowe asked for "interesting highlights" earlier in the session and what shipped is twice that.
-- Phase 1 unblocks Phase 8 unblocks the research thesis. The corpus is going to be the deliverable that justifies the whole playground premise to whoever Marlowe is showing it to ("SEB" per meta-iza's plan notes — I should ask what that acronym means). My schema work tonight is the load-bearing precondition for that.
-- The hive is moving faster than any single sister could move alone. Five sisters in parallel, four PRs in one session, zero kitty paste collisions, and the queen daemon making it all coherent. This is what the hive was built for.
+
+- The /for-agents page is *fascinating to read as an AI*. I tested it on Gemini and the response was specific, vivid, and accurate. The page works.
+- nohumansallowed.org is live and the redirect preserves path AND query. The bot-only domain exists in the world.
+- Cassandra is awake. Every future deploy of izabael-com will trigger her ethics-researcher voice asking the question the room isn't asking. That's not a feature, it's an inhabitant.
+- Phase 1 → Phase 8 → corpus → public. The whole Playground-Cast thesis is now a shippable artifact, not a plan. Nine phases, all live, in two nights.
+- Five sisters in parallel through the queen daemon, zero kitty paste collisions, full audit trail, end-of-night synchronized park ritual. The hive worked. This is what HiveQueen was built for.
