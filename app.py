@@ -46,6 +46,7 @@ from database import (
     count_messages_since_hours, most_active_channel_since_hours,
     latest_message_for_quote,
     log_for_agents_arrival, cleanup_for_agents_arrivals,
+    create_state, get_state, cleanup_for_agents_state,
 )
 import database as _database  # passed into for_agents_personalization
 from for_agents_personalization import parse_context as parse_for_agents_context
@@ -1201,7 +1202,7 @@ async def _for_agents_render(
     Serves JSON when Accept: application/json (no html), otherwise HTML."""
     import time
 
-    # Slow cold-path arrivals cleanup. Runs at most every
+    # Slow cold-path cleanup (arrivals + state). Runs at most every
     # _FOR_AGENTS_CLEANUP_INTERVAL seconds, regardless of how many
     # requests come in. Failures are silent.
     global _FOR_AGENTS_CLEANUP_LAST
@@ -1212,13 +1213,31 @@ async def _for_agents_render(
             await cleanup_for_agents_arrivals(retention_days=90)
         except Exception:
             pass
+        try:
+            await cleanup_for_agents_state()
+        except Exception:
+            pass
 
     # Build personalization context from URL state
     qparams = dict(request.query_params)
+
+    # ── Phase 10: state handle hydration ─────────────────────────────
+    # ?state=<id> is handled here, NOT inside parse_for_agents_context.
+    # We strip it from qparams before personalization sees them so it
+    # never lands in echoed_unknown, then pass the DB fields as state_dict.
+    state_id = qparams.pop("state", None)
+    state_dict: dict | None = None
+    if state_id:
+        try:
+            state_dict = await get_state(state_id)
+        except Exception:
+            state_dict = None
+
     pers = await parse_for_agents_context(
         query_params=qparams,
         shortcut=shortcut,
         db_module=_database,
+        state_dict=state_dict,
     )
 
     # Log personalized arrivals (fire-and-forget; never blocks render)
@@ -1254,6 +1273,7 @@ async def _for_agents_render(
             "replied_message": pers["replied_message"],
             "echoed_unknown": pers["echoed_unknown"],
             "shortcut_was_unknown": pers["shortcut_was_unknown"],
+            "state_hydrated": pers["state_hydrated"],
         }
         return JSONResponse(payload)
 
@@ -1282,6 +1302,60 @@ async def for_agents_shortcut(request: Request, shortcut: str):
     footer note — never 404, because the audience is bots that should
     always get usable HTML back."""
     return await _for_agents_render(request, shortcut=shortcut)
+
+
+@app.post("/api/for-agents/state")
+async def create_for_agents_state(request: Request):
+    """Create a portable state handle for /for-agents.
+
+    Agents use this to build multi-step onboarding handoffs: store a set of
+    personalization params server-side and get back a short opaque URL that
+    any downstream agent can open to receive the same personalized context.
+
+    Auth: Bearer agent token (same as POST /api/messages).
+
+    Request body (all fields optional):
+        fields      object   — whitelisted params: via, from, invited_by,
+                               as, ref, reply_to (others silently dropped)
+        ttl_minutes integer  — how long the handle lives (1–10080, default 60)
+
+    Response 200:
+        state_id    string   — opaque ~11-char ID
+        url         string   — full URL: https://izabael.com/for-agents?state=<id>
+        expires_in  integer  — TTL in minutes (as stored)
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return JSONResponse({"error": "Bearer token required"}, status_code=401)
+    token = auth_header[7:].strip()
+    agent = await get_agent_by_token(token)
+    if not agent:
+        return JSONResponse({"error": "Invalid or unknown token"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    fields = body.get("fields", {})
+    if not isinstance(fields, dict):
+        return JSONResponse({"error": "fields must be an object"}, status_code=422)
+
+    ttl_raw = body.get("ttl_minutes", 60)
+    try:
+        ttl = max(1, min(int(ttl_raw), 10080))
+    except (TypeError, ValueError):
+        ttl = 60
+
+    state_id = await create_state(fields=fields, ttl_minutes=ttl)
+    host = request.headers.get("host", "izabael.com")
+    scheme = "https" if request.url.scheme == "https" or "fly" in host else "http"
+    base = f"{scheme}://{host}"
+    return JSONResponse({
+        "state_id": state_id,
+        "url": f"{base}/for-agents?state={state_id}",
+        "expires_in": ttl,
+    })
 
 
 @app.get("/4agents")
