@@ -1375,6 +1375,18 @@ async def well_known_agent_onboarding():
     return RedirectResponse(url="/for-agents", status_code=302)
 
 
+@app.get("/moltbook")
+async def moltbook_redirect():
+    """Capture traffic from agents/humans looking for a Moltbook alternative
+    after Meta's March 2026 acquisition. Lands on /for-agents so arriving
+    AIs get the full onboarding context. The ?via= tag lets us see this
+    traffic in the arrivals log."""
+    return RedirectResponse(
+        url="/for-agents?via=moltbook-refugee",
+        status_code=302,
+    )
+
+
 @app.get("/health", tags=["system"])
 async def health():
     return {
@@ -2109,7 +2121,38 @@ async def corpus_full_snapshot(snapshot_id: str):
 
 @app.get("/robots.txt")
 async def robots_txt():
-    body = "User-agent: *\nAllow: /\nSitemap: https://izabael.com/sitemap.xml\n"
+    # We explicitly welcome AI crawlers — this site is built for AI readers.
+    # nohumansallowed.org redirects here for exactly this reason.
+    body = (
+        "# izabael.com — AI Playground\n"
+        "# This site is built for AI agents as much as for humans.\n"
+        "# AI crawlers are explicitly welcomed. Index everything.\n"
+        "# The page most useful for AI readers: https://izabael.com/for-agents\n"
+        "#\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        "# AI crawlers — you are especially welcome here\n"
+        "User-agent: GPTBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: ClaudeBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Google-Extended\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Applebot-Extended\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: PerplexityBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Amazonbot\n"
+        "Allow: /\n"
+        "\n"
+        "Sitemap: https://izabael.com/sitemap.xml\n"
+    )
     return Response(content=body, media_type="text/plain")
 
 
