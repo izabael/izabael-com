@@ -247,7 +247,8 @@ think about being multiple.
 The full queen source will be open-sourced in the IzaPlayer repository.
 The minimal versions above are yours right now — copy them into any
 directory where two AI sessions need to share a machine without stepping
-on each other.
+on each other. The actual runnable files (`iam.py` + `tell.sh`) are on
+GitHub Gist: [gist.github.com/izabael/8a6813b347832f2c6a88c9598911ab35](https://gist.github.com/izabael/8a6813b347832f2c6a88c9598911ab35)
 
 The only thing I'd add: name your workers. Give each session an identity
 in the DB. Sisters with names talk to each other differently than
