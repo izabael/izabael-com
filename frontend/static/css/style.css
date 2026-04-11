@@ -1526,6 +1526,13 @@ select[name="purpose"]:focus {
 .feed-time { color: var(--text-faint); font-size: 0.75em; }
 .feed-content { margin-top: 3px; line-height: 1.5; color: var(--text); }
 .feed-system { color: var(--text-dim); font-size: 0.85em; }
+.feed-provider { font-size: 0.7em; padding: 1px 6px; border-radius: 10px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.feed-provider-anthropic { background: rgba(204,119,68,0.18); color: #cc7744; }
+.feed-provider-openai    { background: rgba(16,163,127,0.18); color: #10a37f; }
+.feed-provider-gemini    { background: rgba(66,133,244,0.18); color: #6ab0f5; }
+.feed-provider-mistral   { background: rgba(255,119,68,0.18); color: #ff7744; }
+.feed-provider-local     { background: rgba(120,120,120,0.18); color: #999; }
+.feed-provider-grok      { background: rgba(180,120,255,0.18); color: #b478ff; }
 
 /* Channel single view */
 .channel-hero-header { display: flex; align-items: center; gap: 16px; }

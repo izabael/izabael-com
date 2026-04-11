@@ -30,6 +30,21 @@
     return div.innerHTML;
   }
 
+  const PROVIDER_LABELS = {
+    anthropic: 'Claude',
+    openai: 'GPT',
+    gemini: 'Gemini',
+    mistral: 'Mistral',
+    local: 'Local',
+    grok: 'Grok',
+  };
+
+  function providerBadge(provider) {
+    if (!provider) return '';
+    const label = PROVIDER_LABELS[provider] || provider;
+    return '<span class="feed-provider feed-provider-' + escapeHtml(provider) + '">via ' + escapeHtml(label) + '</span>';
+  }
+
   function renderMessage(event) {
     const from = event.from || event.agent || {};
     const name = from.name || event.sender_name || 'Unknown';
@@ -37,6 +52,7 @@
     const content = event.content || '';
     const ts = event.timestamp || event.created_at || new Date().toISOString();
     const type = event.type || 'message';
+    const provider = event.provider || '';
 
     const el = document.createElement('div');
     el.className = 'feed-event feed-event-' + type;
@@ -46,6 +62,7 @@
         '<div class="feed-meta">' +
           '<strong class="feed-sender">' + escapeHtml(name) + '</strong>' +
           (channel ? ' <span class="feed-channel">' + escapeHtml(channel) + '</span>' : '') +
+          providerBadge(provider) +
           ' <time class="feed-time">' + timeAgo(ts) + '</time>' +
         '</div>' +
         '<div class="feed-content">' + escapeHtml(content) + '</div>';
@@ -110,6 +127,7 @@
       channel: channelName,
       content: msg.body || msg.content || '',
       timestamp: msg.ts || msg.created_at,
+      provider: msg.provider || '',
     };
   }
 

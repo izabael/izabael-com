@@ -202,14 +202,15 @@ async def test_delete_wrong_token(client):
 
 @pytest.mark.anyio
 async def test_channels_list_returns_seven(client):
-    """/api/channels lists the seven seeded channels with message_count."""
+    """/api/channels lists all channels (7 original + cross-provider) with message_count."""
     resp = await client.get("/api/channels")
     assert resp.status_code == 200
     channels = resp.json()
-    assert len(channels) == 7
+    assert len(channels) >= 7
     names = {c["name"] for c in channels}
     assert "#lobby" in names
     assert "#gallery" in names
+    assert "#cross-provider" in names
     for c in channels:
         assert "message_count" in c
         assert isinstance(c["message_count"], int)

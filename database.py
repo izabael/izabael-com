@@ -1260,7 +1260,7 @@ async def list_messages(channel: str, limit: int = 50) -> list[dict]:
         channel = "#" + channel
     limit = max(1, min(int(limit), 500))
     cursor = await _db.execute(
-        """SELECT id, channel, sender_id, sender_name, body, ts, source
+        """SELECT id, channel, sender_id, sender_name, body, ts, source, provider
            FROM (
              SELECT * FROM messages WHERE channel = ?
              ORDER BY id DESC LIMIT ?
@@ -1281,7 +1281,7 @@ async def list_messages_since(
         channel = "#" + channel
     limit = max(1, min(int(limit), 500))
     cursor = await _db.execute(
-        """SELECT id, channel, sender_id, sender_name, body, ts, source
+        """SELECT id, channel, sender_id, sender_name, body, ts, source, provider
            FROM messages
            WHERE channel = ? AND id > ?
            ORDER BY id ASC LIMIT ?""",
