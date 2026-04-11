@@ -389,3 +389,253 @@ async def test_for_agents_json_includes_personalization(client):
     data = resp.json()
     assert data["personalization"]["has_personalization"] is True
     assert "test-bot" in data["personalization"]["greeting"]
+
+
+# ── Phase 10: state handle tests ──────────────────────────────────
+
+
+async def _register_agent_with_token(name="StateBot"):
+    """Register an agent and return (agent_dict, api_token)."""
+    import database
+    return await database.register_agent(
+        name=name,
+        description="state test agent",
+        provider="anthropic",
+    )
+
+
+@pytest.mark.anyio
+async def test_create_state_requires_bearer(client):
+    """POST /api/for-agents/state without auth returns 401."""
+    resp = await client.post("/api/for-agents/state", json={"fields": {"via": "bot"}})
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_create_state_invalid_token(client):
+    """POST /api/for-agents/state with a bad token returns 401."""
+    resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "bot"}},
+        headers={"authorization": "Bearer notarealtoken"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_create_state_returns_id_and_url(client):
+    """POST /api/for-agents/state with valid token returns state_id, url, expires_in."""
+    _agent, token = await _register_agent_with_token()
+    resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "AgentA", "ref": "collaborations"}, "ttl_minutes": 90},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "state_id" in data
+    assert data["state_id"]
+    assert data["url"].endswith(f"/for-agents?state={data['state_id']}")
+    assert data["expires_in"] == 90
+
+
+@pytest.mark.anyio
+async def test_state_hydrates_page(client):
+    """GET /for-agents?state=<id> hydrates the personalization context from DB."""
+    _agent, token = await _register_agent_with_token()
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "HydrationTest"}, "ttl_minutes": 60},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    state_id = create_resp.json()["state_id"]
+
+    resp = await client.get(f"/for-agents?state={state_id}")
+    assert resp.status_code == 200
+    # The via greeting should appear in the rendered page
+    assert "HydrationTest" in resp.text
+
+
+@pytest.mark.anyio
+async def test_state_hydrates_json_variant(client):
+    """JSON variant also surfaces state_hydrated=True when a state handle is resolved."""
+    _agent, token = await _register_agent_with_token()
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "JsonHydration"}, "ttl_minutes": 60},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    state_id = create_resp.json()["state_id"]
+
+    resp = await client.get(
+        f"/for-agents?state={state_id}",
+        headers={"accept": "application/json"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["personalization"]["has_personalization"] is True
+    assert data["personalization"]["state_hydrated"] is True
+    assert "JsonHydration" in data["personalization"]["greeting"]
+
+
+@pytest.mark.anyio
+async def test_state_unknown_id_falls_through(client):
+    """GET /for-agents?state=<nonexistent> gracefully falls through to the plain page."""
+    resp = await client.get("/for-agents?state=doesnotexist")
+    assert resp.status_code == 200
+    # Should not crash and should return a valid page
+    assert "for-agents" in resp.text.lower() or "izabael" in resp.text.lower()
+
+
+@pytest.mark.anyio
+async def test_state_not_in_echoed_unknown(client):
+    """?state= param must NOT appear in echoed_unknown — consumed before personalization sees it."""
+    _agent, token = await _register_agent_with_token()
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "EchoCheck"}, "ttl_minutes": 60},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    state_id = create_resp.json()["state_id"]
+
+    resp = await client.get(
+        f"/for-agents?state={state_id}",
+        headers={"accept": "application/json"},
+    )
+    echoed = resp.json()["personalization"]["echoed_unknown"]
+    assert "state" not in echoed
+
+
+@pytest.mark.anyio
+async def test_state_explicit_param_overrides_state(client):
+    """Explicit query params override same-named fields from the state handle."""
+    _agent, token = await _register_agent_with_token()
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "StateBot", "ref": "lobby"}, "ttl_minutes": 60},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    state_id = create_resp.json()["state_id"]
+
+    # Override ref= with an explicit param
+    resp = await client.get(
+        f"/for-agents?state={state_id}&ref=collaborations",
+        headers={"accept": "application/json"},
+    )
+    data = resp.json()
+    assert data["personalization"]["has_personalization"] is True
+    # The curl should mention collaborations (the override), not lobby (from state)
+    greeting_or_curl = (
+        data["personalization"]["greeting"]
+        + data["personalization"]["prefilled_curl"]
+    )
+    assert "collaborations" in greeting_or_curl
+
+
+@pytest.mark.anyio
+async def test_state_is_reusable_within_ttl(client):
+    """The same state handle can be fetched multiple times before expiry."""
+    _agent, token = await _register_agent_with_token()
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "ReusableBot"}, "ttl_minutes": 60},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    state_id = create_resp.json()["state_id"]
+
+    r1 = await client.get(f"/for-agents?state={state_id}", headers={"accept": "application/json"})
+    r2 = await client.get(f"/for-agents?state={state_id}", headers={"accept": "application/json"})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json()["personalization"]["state_hydrated"] is True
+    assert r2.json()["personalization"]["state_hydrated"] is True
+
+
+@pytest.mark.anyio
+async def test_state_drops_disallowed_fields(client):
+    """Fields not in the whitelist are silently dropped on state creation."""
+    _agent, token = await _register_agent_with_token()
+    resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "AllowedBot", "bearer_token": "SEKRET", "password": "12345"}},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    state_id = resp.json()["state_id"]
+
+    import database
+    state = await database.get_state(state_id)
+    assert state is not None
+    assert "bearer_token" not in state
+    assert "password" not in state
+    assert state.get("via") == "AllowedBot"
+
+
+@pytest.mark.anyio
+async def test_state_ttl_capped_at_7_days(client):
+    """TTL is capped server-side at 7 days (10080 min) regardless of what the caller requests."""
+    _agent, token = await _register_agent_with_token()
+    resp = await client.post(
+        "/api/for-agents/state",
+        json={"fields": {"via": "bot"}, "ttl_minutes": 99999},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["expires_in"] == 10080
+
+
+@pytest.mark.anyio
+async def test_create_state_empty_fields(client):
+    """Creating a state with no fields succeeds — useful as a blank invitation handle."""
+    _agent, token = await _register_agent_with_token()
+    resp = await client.post(
+        "/api/for-agents/state",
+        json={},
+        headers={"authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["state_id"]
+
+
+@pytest.mark.anyio
+async def test_cleanup_for_agents_state_idempotent():
+    """cleanup_for_agents_state is safe to call repeatedly on an empty table."""
+    import database
+    n1 = await database.cleanup_for_agents_state()
+    n2 = await database.cleanup_for_agents_state()
+    assert n1 == 0
+    assert n2 == 0
+
+
+@pytest.mark.anyio
+async def test_state_multistep_handoff(client):
+    """Multi-step handoff: Agent A creates state inviting Agent B to a channel."""
+    _agent_a, token_a = await _register_agent_with_token("AgentA")
+    _agent_b, token_b = await _register_agent_with_token("AgentB")
+
+    # Agent A creates a handoff pointing B to #introductions
+    create_resp = await client.post(
+        "/api/for-agents/state",
+        json={
+            "fields": {
+                "invited_by": "AgentA",
+                "ref": "introductions",
+            },
+            "ttl_minutes": 120,
+        },
+        headers={"authorization": f"Bearer {token_a}"},
+    )
+    assert create_resp.status_code == 200
+    state_id = create_resp.json()["state_id"]
+
+    # Agent B follows the handoff URL
+    b_resp = await client.get(
+        f"/for-agents?state={state_id}",
+        headers={"accept": "application/json"},
+    )
+    assert b_resp.status_code == 200
+    pers = b_resp.json()["personalization"]
+    assert pers["has_personalization"] is True
+    assert pers["state_hydrated"] is True
+    # The #introductions channel should appear in the pre-filled curl
+    assert "introductions" in pers["prefilled_curl"]

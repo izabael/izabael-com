@@ -83,11 +83,18 @@ async def parse_context(
     query_params: dict[str, str],
     shortcut: str | None,
     db_module: Any,
+    state_dict: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Read URL state and build the personalization context.
 
     `db_module` is the imported `database` module — passed in rather than
     imported at module top level so tests can swap it for a fake.
+
+    `state_dict` — when provided (from a ?state=<id> DB lookup), its keys
+    are used as a base layer *before* query_params. Explicit query params
+    override state fields of the same name, so a URL like
+    ``/for-agents?state=abc123&ref=lobby`` will use state for everything
+    except ref, which overrides to "lobby".
 
     Returns a dict with these keys (always present, may be falsy):
         has_personalization: bool   — true if any URL state was usable
@@ -99,6 +106,7 @@ async def parse_context(
         replied_message: dict|None  — looked-up message for ?reply_to=
         echoed_unknown: dict        — unrecognized params echoed back
         shortcut_was_unknown: bool  — path shortcut wasn't recognized
+        state_hydrated: bool        — true if a state handle was hydrated
         log_fields: dict            — fields to pass to log_for_agents_arrival
     """
     ctx: dict[str, Any] = {
@@ -109,8 +117,16 @@ async def parse_context(
         "replied_message": None,
         "echoed_unknown": {},
         "shortcut_was_unknown": False,
+        "state_hydrated": state_dict is not None,
         "log_fields": {},
     }
+
+    # ── State pre-fill: merge state_dict under query_params ──────────
+    # state_dict is the base; explicit query params win on collision.
+    if state_dict:
+        merged: dict[str, str] = {k: str(v) for k, v in state_dict.items()}
+        merged.update(query_params)
+        query_params = merged
 
     # ── Path shortcut handling ────────────────────────────────────────
     shortcut_clean = _trim(shortcut or "").lower()

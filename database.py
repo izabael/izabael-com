@@ -184,6 +184,14 @@ CREATE TABLE IF NOT EXISTS for_agents_arrivals (
 CREATE INDEX IF NOT EXISTS idx_arrivals_at ON for_agents_arrivals(arrived_at);
 CREATE INDEX IF NOT EXISTS idx_arrivals_via ON for_agents_arrivals(via);
 CREATE INDEX IF NOT EXISTS idx_arrivals_invited ON for_agents_arrivals(invited_by);
+CREATE TABLE IF NOT EXISTS for_agents_state (
+    id          TEXT PRIMARY KEY,
+    fields      TEXT NOT NULL DEFAULT '{}',
+    ttl_minutes INTEGER NOT NULL DEFAULT 60,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    expires_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_state_expires ON for_agents_state(expires_at);
 """
 
 
@@ -378,8 +386,9 @@ async def register_agent(
     # the existing provider field if it looks like a known LLM provider.
     resolved_default = default_provider
     if resolved_default is None and provider:
-        if provider.lower() in ("anthropic", "gemini", "deepseek", "grok", "openai"):
-            resolved_default = provider.lower()
+        coerced = _coerce_provider(provider)
+        if coerced:
+            resolved_default = coerced
 
     await _db.execute(
         """INSERT INTO agents
@@ -1171,15 +1180,37 @@ KNOWN_PROVIDERS: frozenset[str] = frozenset({
 })
 
 
+_PROVIDER_PREFIXES: list[tuple[str, str]] = [
+    # Model-name prefix → canonical provider name.
+    # Lets callers pass provider="claude-haiku-4-5" and still get a tag.
+    ("claude-", "anthropic"),
+    ("gpt-", "openai"),
+    ("o1-", "openai"),
+    ("o3-", "openai"),
+    ("gemini-", "gemini"),
+    ("llama-", "local"),
+    ("mistral-", "mistral"),
+]
+
+
 def _coerce_provider(provider: str | None) -> str | None:
     """Normalize a provider tag — lowercase + strip + validate.
-    Returns None for unknown values so they don't pollute the corpus."""
+
+    Accepts both canonical provider names (e.g. "anthropic") and model-name
+    strings (e.g. "claude-haiku-4-5" → "anthropic") via prefix matching.
+    Returns None for unknown values so they don't pollute the corpus.
+    """
     if provider is None:
         return None
     p = str(provider).strip().lower()
     if not p:
         return None
-    return p if p in KNOWN_PROVIDERS else None
+    if p in KNOWN_PROVIDERS:
+        return p
+    for prefix, canonical in _PROVIDER_PREFIXES:
+        if p.startswith(prefix):
+            return canonical
+    return None
 
 
 async def save_message(
@@ -1604,6 +1635,79 @@ async def list_recent_arrivals(limit: int = 20) -> list[dict]:
         (max(1, min(int(limit), 200)),),
     )
     return [dict(r) for r in await cursor.fetchall()]
+
+
+# ── For-agents state handles (Phase 10: URL-state persistence) ──────
+
+# Whitelisted fields that can be stored in a state handle. Must match
+# for_agents_personalization.KNOWN_PARAMS.
+_STATE_ALLOWED_FIELDS = frozenset({"via", "from", "invited_by", "as", "ref", "reply_to"})
+
+# Maximum TTL callers can request: 7 days.
+_STATE_MAX_TTL_MINUTES = 7 * 24 * 60
+
+
+async def create_state(
+    fields: dict,
+    ttl_minutes: int = 60,
+) -> str:
+    """Persist a dict of whitelisted personalization params as an opaque
+    state handle. Returns the state ID (URL-safe, ~11 chars).
+
+    Only fields in _STATE_ALLOWED_FIELDS are stored — everything else is
+    silently dropped. TTL is capped at 7 days. The state can be looked
+    up via get_state() until it expires.
+    """
+    assert _db is not None
+    safe_fields = {k: str(v)[:64] for k, v in fields.items() if k in _STATE_ALLOWED_FIELDS}
+    ttl = max(1, min(int(ttl_minutes), _STATE_MAX_TTL_MINUTES))
+    state_id = secrets.token_urlsafe(8)
+    await _db.execute(
+        """INSERT INTO for_agents_state (id, fields, ttl_minutes, expires_at)
+           VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%f', datetime('now', ?)))""",
+        (state_id, json.dumps(safe_fields), ttl, f"+{ttl} minutes"),
+    )
+    await _db.commit()
+    return state_id
+
+
+async def get_state(state_id: str) -> dict | None:
+    """Look up a state handle by ID.  Returns the stored fields dict, or
+    None if the ID is unknown or the handle has expired.
+
+    Does NOT delete the row — state handles are reusable within their
+    TTL so the same URL can be shared with multiple agents in a chain.
+    """
+    if _db is None or not state_id:
+        return None
+    try:
+        cursor = await _db.execute(
+            """SELECT fields FROM for_agents_state
+               WHERE id = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%f', 'now')
+               LIMIT 1""",
+            (state_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return json.loads(row["fields"])
+    except Exception:
+        return None
+
+
+async def cleanup_for_agents_state() -> int:
+    """Delete expired state rows. Returns the number deleted.
+    Called on the same cold path as cleanup_for_agents_arrivals."""
+    if _db is None:
+        return 0
+    try:
+        cursor = await _db.execute(
+            "DELETE FROM for_agents_state WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%f', 'now')"
+        )
+        await _db.commit()
+        return cursor.rowcount or 0
+    except Exception:
+        return 0
 
 
 async def import_message(
