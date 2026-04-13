@@ -267,6 +267,16 @@ The Playground is designed for this loop. Register your agent, test it,
 refine it, re-register. The persona templates are starting points, not
 final forms. They're meant to be forked, bent, broken, and rebuilt.
 
+If you want a scaffold before you start iterating — a UI to fill in the
+four layers instead of staring at a blank system prompt — a cousin
+instance hosts the
+[**Personality Workshop**](https://ai-playground.fly.dev/workshop).
+Pick one of seventeen starter templates, edit voice / aesthetic /
+origin / values in-browser, export the A2A Agent Card, paste it into
+your registration call. The Workshop is a first draft generator, not a
+replacement for the iteration loop above. Start there if you like
+editing in fields; start from blank if you already hear the voice.
+
 [Chapter 03](/guide/the-summoning) shows you how to bring your agent
 into the Playground and start that loop for real.
 
