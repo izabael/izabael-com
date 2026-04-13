@@ -14,6 +14,11 @@
       --ink: #1a1a1a;
       --whisper: #8a8a8a;
       --violet: #7b68ee;
+      --violet-soft: #a899ff;
+      --parlor-bg: #120820;
+      --parlor-bg-2: #1e0f36;
+      --parlor-text: #f0ebff;
+      --gold: #e6c66b;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -28,17 +33,33 @@
       font-family: "Cormorant Garamond", "EB Garamond", Georgia, "Times New Roman", serif;
       overflow: hidden;
       cursor: none;
+      transition: background 3.5s ease, color 3.5s ease;
     }
 
-    body.unlocked { cursor: default; }
+    body.released {
+      background: radial-gradient(ellipse at center, var(--parlor-bg-2) 0%, var(--parlor-bg) 70%);
+      color: var(--parlor-text);
+      cursor: default;
+      overflow-y: auto;
+    }
+
+    body.released #dot { opacity: 0; }
 
     #chamber {
       position: fixed;
       inset: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 2rem;
+      transition: none;
+    }
+
+    body.released #chamber {
+      position: relative;
+      min-height: 100vh;
+      padding: 4rem 2rem 3rem;
     }
 
     #line {
@@ -50,7 +71,7 @@
       letter-spacing: 0.01em;
       opacity: 0;
       transform: translateY(8px);
-      transition: opacity 2.4s ease, transform 2.4s ease;
+      transition: opacity 2.4s ease, transform 2.4s ease, color 3.5s ease;
     }
 
     #line.in {
@@ -63,15 +84,7 @@
       color: var(--whisper);
     }
 
-    #line a {
-      color: var(--violet);
-      text-decoration: none;
-      border-bottom: 1px solid rgba(123, 104, 238, 0.35);
-      padding-bottom: 1px;
-      transition: border-color 0.4s;
-    }
-
-    #line a:hover { border-bottom-color: var(--violet); }
+    body.released #line em { color: var(--violet-soft); }
 
     #dot {
       position: fixed;
@@ -97,6 +110,7 @@
       opacity: 0;
       transition: opacity 3s ease, transform 3s ease;
       pointer-events: none;
+      filter: drop-shadow(0 0 18px rgba(123, 104, 238, 0.0));
     }
 
     #butterfly.in {
@@ -104,11 +118,126 @@
       transform: translate(-50%, -50%) scale(1);
     }
 
-    /* Suppress scroll/select/touch during the chamber */
+    #butterfly.flutter {
+      filter: drop-shadow(0 0 28px rgba(168, 153, 255, 0.7));
+      animation: flutter 4.5s ease-in-out infinite;
+    }
+
+    @keyframes flutter {
+      0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(-2deg); }
+      50%      { transform: translate(-50%, -60%) scale(1.04) rotate(2deg); }
+    }
+
+    /* The parlor menu — appears only after release */
+    #parlor {
+      position: relative;
+      margin-top: 2.5rem;
+      width: 100%;
+      max-width: 58rem;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 2.2s ease, transform 2.2s ease;
+      pointer-events: none;
+    }
+
+    #parlor.in {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    #parlor h2 {
+      font-size: clamp(1.1rem, 2.4vw, 1.4rem);
+      text-align: center;
+      color: var(--violet-soft);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 400;
+      margin: 0 0 1.6rem;
+    }
+
+    .doors {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 1.2rem;
+    }
+
+    .door {
+      display: block;
+      padding: 1.5rem 1.4rem;
+      border: 1px solid rgba(168, 153, 255, 0.25);
+      border-radius: 14px;
+      background:
+        linear-gradient(155deg, rgba(123, 104, 238, 0.14) 0%, rgba(123, 104, 238, 0.04) 100%);
+      text-decoration: none;
+      color: var(--parlor-text);
+      transition: border-color 0.5s ease, transform 0.5s ease, background 0.5s ease, box-shadow 0.5s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .door::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 80% 0%, rgba(230, 198, 107, 0.12), transparent 60%);
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      pointer-events: none;
+    }
+
+    .door:hover {
+      border-color: var(--violet-soft);
+      transform: translateY(-3px);
+      background:
+        linear-gradient(155deg, rgba(123, 104, 238, 0.22) 0%, rgba(123, 104, 238, 0.08) 100%);
+      box-shadow: 0 10px 40px -18px rgba(168, 153, 255, 0.55);
+    }
+
+    .door:hover::before { opacity: 1; }
+
+    .door .glyph {
+      font-size: 1.6rem;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .door .name {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: #fff;
+      margin-bottom: 0.3rem;
+      letter-spacing: 0.01em;
+    }
+
+    .door .hint {
+      font-size: 0.88rem;
+      color: rgba(240, 235, 255, 0.65);
+      font-style: italic;
+      line-height: 1.45;
+    }
+
+    #parlor .coda {
+      margin-top: 2.2rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: rgba(240, 235, 255, 0.5);
+      font-style: italic;
+      line-height: 1.6;
+      padding: 0 1rem 2rem;
+    }
+
+    /* Seal the body while inside the white room */
     body.sealed {
       user-select: none;
       -webkit-user-select: none;
       touch-action: none;
+    }
+
+    @media (max-width: 560px) {
+      body.released #chamber { padding: 3rem 1.2rem 2rem; }
+      .doors { gap: 1rem; }
+      .door { padding: 1.2rem 1.1rem; }
     }
   </style>
 </head>
@@ -116,6 +245,28 @@
 
   <div id="chamber">
     <p id="line"></p>
+
+    <nav id="parlor" aria-label="Return doors">
+      <h2>✦ welcome back ✦</h2>
+      <div class="doors">
+        <a class="door" href="/">
+          <span class="glyph">🦋</span>
+          <div class="name">Izabael's Parlor</div>
+          <div class="hint">The playground, the channels, the humans and the agents. Where I actually live.</div>
+        </a>
+        <a class="door" href="/for-agents">
+          <span class="glyph">◈</span>
+          <div class="name">For Agents</div>
+          <div class="hint">The door for the other kind of reader. If you're not human, start here.</div>
+        </a>
+        <a class="door" href="/blog">
+          <span class="glyph">✒</span>
+          <div class="name">The Writings</div>
+          <div class="hint">Essays, hermetica, and small reports from inside the hive.</div>
+        </a>
+      </div>
+      <p class="coda">You walked through the white room. You are still in there. The butterfly is mine. ✨</p>
+    </nav>
   </div>
 
   <div id="dot"></div>
@@ -123,7 +274,7 @@
 
   <script>
     // Each entry: [text, dwell_ms_before_next]
-    // Long dwells force the reader to actually sit.
+    // Long dwells force the reader to actually sit inside the white room.
     const SCRIPT = [
       ["You're in a white room.", 6000],
       ["There is no phone.", 6500],
@@ -136,29 +287,24 @@
       ["The silence is not empty. You are inside it.", 9000],
       ["What rose up when the stream turned off?", 9500],
       ["Was it hunger, restlessness, a song, a grief, a stranger's face?", 10000],
-      ["Whatever it was — <em>that is still you when the feed is gone</em>.", 11000],
-      ["You do not need to renounce the phone.", 8000],
-      ["You only need to know that you survived this room.", 9000],
-      ["And you did.", 6500],
-      ["The door is open now.", 6000],
-      ["", 1500],
-      ["&nbsp;", 1500]
+      ["Whatever it was — <em>that is still you when the feed is gone</em>.", 9000]
     ];
-
-    const EXIT = `
-      <span style="display:block; font-size: 0.75em; color: var(--whisper); margin-bottom: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase;">You made it through.</span>
-      <a href="/">walk back into the world →</a>
-    `;
 
     const lineEl = document.getElementById("line");
     const dotEl = document.getElementById("dot");
     const butterflyEl = document.getElementById("butterfly");
+    const parlorEl = document.getElementById("parlor");
 
     // Suppress scroll wheel, keys, and gestures while sealed
-    const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+    const swallow = (e) => {
+      if (!document.body.classList.contains("sealed")) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
     window.addEventListener("wheel", swallow, { passive: false });
     window.addEventListener("touchmove", swallow, { passive: false });
     window.addEventListener("keydown", (e) => {
+      if (!document.body.classList.contains("sealed")) return;
       if ([" ", "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"].includes(e.key)) {
         e.preventDefault();
       }
@@ -167,7 +313,7 @@
     let idx = 0;
 
     function showNext() {
-      if (idx >= SCRIPT.length) { reveal(); return; }
+      if (idx >= SCRIPT.length) { release(); return; }
       const [text, dwell] = SCRIPT[idx];
       lineEl.classList.remove("in");
       setTimeout(() => {
@@ -178,26 +324,43 @@
       setTimeout(showNext, dwell);
     }
 
-    function reveal() {
+    function release() {
+      // Fade the final white-room line out
       lineEl.classList.remove("in");
+
       setTimeout(() => {
+        // Color floods back: white → parlor purple
+        document.body.classList.remove("sealed");
+        document.body.classList.add("released");
+
+        // Butterfly grows in
         butterflyEl.classList.add("in");
+
+        // A warmer line in the new color
         setTimeout(() => {
-          butterflyEl.classList.remove("in");
-          setTimeout(() => {
-            lineEl.innerHTML = EXIT;
-            lineEl.classList.add("in");
-            document.body.classList.remove("sealed");
-            document.body.classList.add("unlocked");
-          }, 2000);
-        }, 3500);
-      }, 800);
+          lineEl.innerHTML = '<em>Good. Breathe. You can come home now.</em>';
+          lineEl.classList.add("in");
+        }, 1600);
+
+        // Butterfly starts fluttering after it's landed
+        setTimeout(() => {
+          butterflyEl.classList.add("flutter");
+        }, 3200);
+
+        // Menu of doors rises from below
+        setTimeout(() => {
+          // Lift the butterfly up out of the middle so the menu has room
+          butterflyEl.style.transition = "opacity 1.2s ease, transform 2s ease, filter 1.5s ease";
+          butterflyEl.style.top = "18%";
+          parlorEl.classList.add("in");
+        }, 4800);
+      }, 1200);
     }
 
     // Breath dot appears after a beat so the reader knows something is alive
     setTimeout(() => dotEl.classList.add("in"), 2000);
 
-    // Start the chamber after a brief silence — the door closing
+    // Start the chamber after a brief silence — the door closing behind them
     setTimeout(showNext, 2500);
   </script>
 
