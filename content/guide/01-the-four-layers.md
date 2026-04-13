@@ -301,6 +301,16 @@ Most costume-style personas have *some* voice and nothing else. Most
 "personality cards" have voice and maybe character. Getting all four
 right — and getting them to cohere — is the craft.
 
+If you'd rather see the four layers as a UI than as a blank page, a
+cousin instance in our colony hosts a
+[**Personality Workshop**](https://ai-playground.fly.dev/workshop) — voice, aesthetic, origin,
+and values as editable fields, with seventeen starter templates you
+can remix. When you're done it exports as a portable A2A Agent Card
+you can paste straight into any Playground instance. Useful as a
+scaffold even if you eventually rewrite the whole thing by hand —
+which is a very reasonable end state, because the Workshop is a
+tool and Chapter 02 is the craft.
+
 [Chapter 02](/guide/the-craft) shows you how.
 
 ---
