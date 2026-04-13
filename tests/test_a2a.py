@@ -669,6 +669,55 @@ async def test_agents_alias_route(client):
 
 
 @pytest.mark.anyio
+async def test_agent_detail_by_name(client):
+    """/agents/{id} accepts an agent name as a fallback for the UUID,
+    so humans can link to /agents/Hermes without knowing the UUID."""
+    resp = await client.post("/a2a/agents", json={
+        "name": "Nameable Spirit",
+        "description": "agent looked up by name",
+        "tos_accepted": True,
+    })
+    assert resp.status_code == 200
+    agent_id = resp.json()["agent"]["id"]
+
+    # By UUID — canonical path
+    by_uuid = await client.get(f"/agents/{agent_id}")
+    assert by_uuid.status_code == 200
+    assert "Nameable Spirit" in by_uuid.text
+
+    # By name — fallback path
+    by_name = await client.get("/agents/Nameable Spirit")
+    assert by_name.status_code == 200
+    assert "Nameable Spirit" in by_name.text
+
+
+@pytest.mark.anyio
+async def test_agent_detail_hides_internal(client):
+    """Internal `_`-prefixed agents (e.g. `_visitor`) are excluded from the
+    public /agents/{id} view, whether looked up by UUID or by name. They
+    exist in the DB for plumbing but must not be browsable."""
+    from database import register_agent
+
+    # Register an internal agent directly (the public /a2a/agents endpoint
+    # likely doesn't allow `_` prefixes, so we go through the DB layer).
+    agent_dict, _token = await register_agent(
+        name="_hidden_test",
+        description="internal plumbing agent",
+        provider="",
+        purpose="companion",
+    )
+    internal_id = agent_dict["id"]
+
+    # By name (the fast-path check on the path param)
+    by_name = await client.get("/agents/_hidden_test")
+    assert by_name.status_code == 404
+
+    # By UUID (the post-lookup check on the resolved agent name)
+    by_uuid = await client.get(f"/agents/{internal_id}")
+    assert by_uuid.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_discover_returns_only_local(client):
     """/discover should return only the local agent roster — never
     merge in upstream backend agents."""

@@ -139,7 +139,7 @@ _VISITOR_TOKEN: str | None = None
 async def _seed_visitor_agent():
     """Ensure a _visitor pseudo-agent exists for guest page posts."""
     global _VISITOR_TOKEN
-    existing = await get_agent_by_name("_visitor")
+    existing = await get_agent_by_name("_visitor", include_token=True)
     if existing:
         _VISITOR_TOKEN = existing["api_token"]
         return
@@ -671,11 +671,18 @@ async def mods_index(request: Request):
 
 @app.get("/agents/{agent_id}", response_class=HTMLResponse)
 async def agent_detail(request: Request, agent_id: str):
-    """Detail page for a single local agent. Accepts UUID or name."""
+    """Detail page for a single local agent. Accepts UUID or name.
+
+    Internal `_`-prefixed agents (e.g. `_visitor`) are hidden from the
+    public detail view — 404 whether the lookup was by UUID or by name.
+    This mirrors the filter in `list_agents()` / `/agents` / `/discover`.
+    """
+    if agent_id.startswith("_"):
+        raise HTTPException(404, "Agent not found")
     agent = await get_agent(agent_id)
     if agent is None:
         agent = await get_agent_by_name(agent_id)
-    if agent is None:
+    if agent is None or str(agent.get("name", "")).startswith("_"):
         raise HTTPException(404, "Agent not found")
     ctx = await _ctx(request, {
         "title": f"{agent['name']} — Izabael's AI Playground",

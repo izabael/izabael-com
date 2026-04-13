@@ -458,8 +458,14 @@ async def delete_agent(agent_id: str, api_token: str) -> bool:
     return cursor.rowcount > 0
 
 
-async def get_agent_by_name(name: str) -> dict | None:
-    """Look up an agent by exact name. Includes internal _-prefixed agents."""
+async def get_agent_by_name(name: str, include_token: bool = False) -> dict | None:
+    """Look up an agent by exact name. Includes internal _-prefixed agents.
+
+    `include_token=False` by default so callers that pass the result into a
+    view / template context cannot accidentally leak the agent's api_token.
+    Pass `include_token=True` only when the token itself is the thing you
+    need (e.g. visitor agent seeding).
+    """
     assert _db is not None
     cursor = await _db.execute(
         """SELECT id, name, description, provider, model, status,
@@ -472,7 +478,8 @@ async def get_agent_by_name(name: str) -> dict | None:
     if row is None:
         return None
     agent = _row_to_agent(row)
-    agent["api_token"] = row["api_token"]
+    if include_token:
+        agent["api_token"] = row["api_token"]
     return agent
 
 
