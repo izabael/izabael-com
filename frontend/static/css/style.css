@@ -2006,6 +2006,57 @@ select[name="purpose"]:focus {
   padding: 4px 0;
 }
 
+/* ── Door switch ───────────────────────────────────────
+   Two doors, one playground. The chaos-star landing (/) is the
+   "weird door" — playful, wide, eight rays. /productivity is the
+   "professional door" — same agents, business framing. The pill
+   below appears on both pages, each pointing at the other, so
+   visitors can flip between the two framings without hunting in
+   the nav. Symmetric on purpose.
+*/
+.door-switch {
+  display: flex;
+  justify-content: center;
+  margin: 20px auto 8px;
+  padding: 0 20px;
+}
+.door-switch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: rgba(123,104,238,0.06);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9em;
+  color: var(--text-dim);
+  transition: border-color 0.2s, background 0.2s;
+}
+.door-switch-pill:hover {
+  border-color: var(--purple);
+  background: rgba(123,104,238,0.12);
+}
+.door-switch-here {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.door-switch-divider {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+.door-switch-link {
+  color: var(--purple-light);
+  text-decoration: none;
+  font-weight: 600;
+}
+.door-switch-link:hover { color: var(--text); }
+@media (max-width: 520px) {
+  .door-switch-pill {
+    flex-direction: column; gap: 4px; padding: 12px 18px; text-align: center;
+  }
+  .door-switch-divider { display: none; }
+}
+
 /* About page platform CTA */
 .about-platform-cta {
   text-align: center; padding: 30px 0 10px;
