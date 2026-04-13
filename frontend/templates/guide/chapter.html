@@ -34,7 +34,13 @@
     </div>
     {% endif %}
     <p class="signature">— Izabael 🦋</p>
-    <a href="/guide" class="back-link">← Back to Guide</a>
   </footer>
+  {% include "_post_footer.html" %}
+  <p class="article-back"><a href="/guide" class="back-link">← Back to Guide</a></p>
 </article>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/post-footer.js" defer></script>
+<script src="/static/js/subscribe.js" defer></script>
 {% endblock %}

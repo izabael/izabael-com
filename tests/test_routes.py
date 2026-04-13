@@ -24,6 +24,13 @@ async def _init_test_db(tmp_path):
     import database
     database.DB_PATH = str(tmp_path / "routes.db")
     await init_db()
+    # Reset slowapi so per-test POST counts don't accumulate across the
+    # suite (e.g. /subscribe is 3/minute).
+    try:
+        from app import limiter
+        limiter.reset()
+    except Exception:
+        pass
     yield
     await close_db()
 
@@ -289,3 +296,105 @@ async def test_corpus_in_sitemap(client):
     resp = await client.get("/sitemap.xml")
     assert "/research/playground-corpus/" in resp.text
     assert "/research/playground-corpus/methodology" in resp.text
+
+
+# ── Newsletter subscribe + confirm ────────────────────────────────
+
+@pytest.mark.anyio
+async def test_subscribe_saves_and_returns_ok(client, monkeypatch):
+    """POST /subscribe stores a pending subscription and returns ok=True.
+    When mail is not configured (test mode), the confirm_url is returned
+    so local flows can activate the subscription without real email."""
+    # Guarantee mail is NOT configured for this test
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    resp = await client.post("/subscribe", data={"email": "hello@example.com"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "confirm_url" in data
+    assert "token=" in data["confirm_url"]
+
+
+@pytest.mark.anyio
+async def test_subscribe_sends_mail_when_configured(client, monkeypatch):
+    """When RESEND_API_KEY is set, /subscribe calls the mail sender
+    and does NOT leak the confirm_url in the response."""
+    import mail as mail_mod
+    sent = {}
+
+    async def fake_send(email, token):
+        sent["email"] = email
+        sent["token"] = token
+        return True
+
+    monkeypatch.setenv("RESEND_API_KEY", "test-key")
+    monkeypatch.setattr(mail_mod, "send_newsletter_confirmation", fake_send)
+    # app.py imports the name at module load, so patch there too
+    import app as app_mod
+    monkeypatch.setattr(app_mod, "send_newsletter_confirmation", fake_send)
+
+    resp = await client.post("/subscribe", data={"email": "sent@example.com"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "confirm_url" not in data
+    assert sent.get("email") == "sent@example.com"
+    assert sent.get("token")
+
+
+@pytest.mark.anyio
+async def test_subscribe_mail_failure_returns_500(client, monkeypatch):
+    """When mail is configured but the sender returns False, /subscribe
+    surfaces a 500 so the user isn't left waiting for a message."""
+    async def fake_send(email, token):
+        return False
+
+    monkeypatch.setenv("RESEND_API_KEY", "test-key")
+    import app as app_mod
+    monkeypatch.setattr(app_mod, "send_newsletter_confirmation", fake_send)
+
+    resp = await client.post("/subscribe", data={"email": "fail@example.com"})
+    assert resp.status_code == 500
+
+
+@pytest.mark.anyio
+async def test_subscribe_invalid_email(client):
+    """Bad email → 400."""
+    resp = await client.post("/subscribe", data={"email": "not-an-email"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_confirm_activates_subscription(client, monkeypatch):
+    """Full double-opt-in loop: subscribe → grab token → /confirm."""
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    resp = await client.post("/subscribe", data={"email": "loop@example.com"})
+    assert resp.status_code == 200
+    token = resp.json()["confirm_url"].split("token=")[1]
+    resp = await client.get(f"/confirm?token={token}")
+    assert resp.status_code == 200
+    assert "loop@example.com" in resp.text
+
+
+# ── Post footer (share buttons, subscribe, related) ───────────────
+
+@pytest.mark.anyio
+async def test_blog_post_has_footer(client):
+    """Blog post page renders the shared post footer partial."""
+    resp = await client.get("/blog/a-note-from-the-hostess")
+    assert resp.status_code == 200
+    assert "post-footer" in resp.text
+    assert "share-buttons" in resp.text
+    assert "bsky.app/intent/compose" in resp.text
+    assert "Keep me posted" in resp.text
+    assert "Keep reading" in resp.text
+
+
+@pytest.mark.anyio
+async def test_guide_chapter_has_footer(client):
+    """Guide chapter also renders the shared post footer partial."""
+    resp = await client.get("/guide/why-personality-matters")
+    assert resp.status_code == 200
+    assert "post-footer" in resp.text
+    assert "share-buttons" in resp.text
+    assert "Keep me posted" in resp.text

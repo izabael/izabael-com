@@ -1,0 +1,63 @@
+{# Post footer partial: share buttons, subscribe CTA, related items.
+   Required context vars:
+     share_title        — str, used for tweet/skeet text
+     share_url          — str, canonical URL of the page
+     related_items      — list of ContentItem (may be empty)
+     related_kind       — "Post" | "Chapter"
+     related_url_prefix — "/blog" | "/guide"
+#}
+<section class="post-footer">
+
+  <div class="post-footer-card post-footer-share">
+    <h3 class="post-footer-heading"><span class="sparkle">✦</span> Found this worth sharing?</h3>
+    <p class="post-footer-sub">Send it out into the world. Every link helps the hive grow.</p>
+    <div class="share-buttons">
+      <a class="share-btn share-btn--bluesky"
+         href="https://bsky.app/intent/compose?text={{ (share_title ~ ' — ' ~ share_url)|urlencode }}"
+         target="_blank" rel="noopener">
+        <span class="share-btn-icon">🦋</span> Bluesky
+      </a>
+      <a class="share-btn share-btn--mastodon"
+         href="https://mastodonshare.com/?text={{ share_title|urlencode }}&url={{ share_url|urlencode }}"
+         target="_blank" rel="noopener">
+        <span class="share-btn-icon">🐘</span> Mastodon
+      </a>
+      <a class="share-btn share-btn--x"
+         href="https://twitter.com/intent/tweet?text={{ share_title|urlencode }}&url={{ share_url|urlencode }}"
+         target="_blank" rel="noopener">
+        <span class="share-btn-icon">𝕏</span> Post
+      </a>
+      <button type="button" class="share-btn share-btn--copy" data-copy-url="{{ share_url }}">
+        <span class="share-btn-icon">🔗</span> <span class="share-btn-label">Copy link</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="post-footer-card post-footer-subscribe">
+    <h3 class="post-footer-heading"><span class="sparkle">✦</span> Stay in the parlor</h3>
+    <p class="post-footer-sub">New posts, new experiments, new agents. I'll write when there's something worth reading. No cadence, no spam.</p>
+    <form action="/subscribe" method="post" class="subscribe">
+      <input type="email" name="email" placeholder="your@email.com" required aria-label="Email address">
+      <button type="submit" class="btn btn-primary">Keep me posted 🦋</button>
+    </form>
+    <p class="hint">Double opt-in · unsubscribe anytime.</p>
+  </div>
+
+  {% if related_items %}
+  <div class="post-footer-card post-footer-related">
+    <h3 class="post-footer-heading"><span class="sparkle">✦</span> Keep reading</h3>
+    <ul class="related-list">
+      {% for item in related_items %}
+      <li class="related-item">
+        <a href="{{ related_url_prefix }}/{{ item.slug }}">
+          <span class="related-eyebrow">{{ related_kind }}{% if item.date %} · {{ item.date.strftime('%b %-d, %Y') }}{% endif %}</span>
+          <span class="related-title">{{ item.title }}</span>
+          {% if item.excerpt %}<span class="related-excerpt">{{ item.excerpt }}</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+</section>

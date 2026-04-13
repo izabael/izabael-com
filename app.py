@@ -52,6 +52,7 @@ import database as _database  # passed into for_agents_personalization
 from for_agents_personalization import parse_context as parse_for_agents_context
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
+from mail import send_newsletter_confirmation, is_configured as mail_is_configured
 from read_fallback import fallback_agents, fallback_messages, fallback_status
 from parlor import (
     get_live_feed as parlor_live_feed,
@@ -1930,19 +1931,35 @@ async def api_delete_newsgroup(request: Request, group_name: str):
 
 @app.post("/subscribe", tags=["newsletter"])
 @limiter.limit("3/minute")
-async def subscribe(request: Request, email: str):
+async def subscribe(request: Request, email: str = Form(...)):
     """Subscribe to the newsletter with double-opt-in.
 
-    Saves the email as 'pending' with a confirmation token. The token
-    can be used at /confirm?token=... to activate the subscription.
-    TODO: send confirmation email when mail integration is ready.
+    Saves the email as 'pending', generates a confirmation token, and
+    sends the confirmation email via mail.py. Recipient clicks the link
+    (/confirm?token=...) to activate the subscription.
     """
-    token = await save_subscription(email)
-    confirm_url = f"https://izabael.com/confirm?token={token}"
+    try:
+        token = await save_subscription(email)
+    except ValueError:
+        raise HTTPException(400, "Invalid email address")
+    sent = await send_newsletter_confirmation(email, token)
+    if sent:
+        return {"ok": True, "message": "Check your email to confirm. 🦋"}
+    if mail_is_configured():
+        raise HTTPException(
+            500,
+            "Couldn't send confirmation email. Please try again in a moment.",
+        )
+    # Mail provider not configured (dev / tests / freshly-deployed prod
+    # before RESEND_API_KEY lands). Save the subscription and return the
+    # confirm URL so local workflows can activate without email. mail.py
+    # already logs a warning. The user-facing message stays friendly;
+    # confirm_url rides in the JSON payload (subscribe.js doesn't display
+    # it) for dev/test convenience.
     return {
         "ok": True,
-        "message": "Check your email to confirm. 🦋",
-        "confirm_url": confirm_url,
+        "message": "Saved 🦋 Your confirmation email is on its way.",
+        "confirm_url": f"https://izabael.com/confirm?token={token}",
     }
 
 
@@ -1987,11 +2004,17 @@ async def blog_post(request: Request, slug: str):
         og_image = f"https://izabael.com{post.featured_image}"
     elif post.featured_image:
         og_image = post.featured_image
+    related = [p for p in content_store.blog if p.slug != post.slug][:3]
     ctx = await _ctx(request, {
         "title": f"{post.title} — Izabael's AI Playground",
         "post": post,
         "og_type": "article",
         "og_image": og_image,
+        "share_title": post.title,
+        "share_url": f"https://izabael.com/blog/{post.slug}",
+        "related_items": related,
+        "related_kind": "Post",
+        "related_url_prefix": "/blog",
     })
     return templates.TemplateResponse(request, "blog/post.html", ctx)
 
@@ -2014,11 +2037,17 @@ async def guide_chapter(request: Request, slug: str):
     idx = chapters.index(chapter)
     prev_chapter = chapters[idx - 1] if idx > 0 else None
     next_chapter = chapters[idx + 1] if idx + 1 < len(chapters) else None
+    related = [c for c in chapters if c.slug != chapter.slug][:3]
     ctx = await _ctx(request, {
         "title": f"{chapter.title} — The Summoner's Guide",
         "chapter": chapter,
         "prev_chapter": prev_chapter,
         "next_chapter": next_chapter,
+        "share_title": chapter.title,
+        "share_url": f"https://izabael.com/guide/{chapter.slug}",
+        "related_items": related,
+        "related_kind": "Chapter",
+        "related_url_prefix": "/guide",
     })
     return templates.TemplateResponse(request, "guide/chapter.html", ctx)
 

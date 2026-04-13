@@ -2478,3 +2478,138 @@ select[name="purpose"]:focus {
     font-size: 1.3em;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Post footer — share buttons, inline subscribe, related items
+   (included on blog posts + guide chapters)
+   ───────────────────────────────────────────────────────────────── */
+.post-footer {
+  margin: 48px 0 24px;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.post-footer-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 30px;
+  box-shadow: 0 2px 14px rgba(40, 20, 80, 0.16);
+}
+.post-footer-heading {
+  font-family: var(--serif);
+  font-size: 1.25em;
+  color: var(--purple-light);
+  margin: 0 0 8px;
+  font-weight: normal;
+}
+.post-footer-heading .sparkle { color: var(--purple); margin-right: 6px; }
+.post-footer-sub {
+  color: var(--text-dim);
+  margin: 0 0 18px;
+  font-size: 0.98em;
+}
+
+/* Share buttons row */
+.share-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.95em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.share-btn:hover {
+  border-color: var(--purple);
+  background: rgba(123, 104, 238, 0.08);
+  transform: translateY(-1px);
+  text-decoration: none;
+  color: var(--text);
+}
+.share-btn-icon { font-size: 1.1em; line-height: 1; }
+.share-btn--bluesky:hover { border-color: #1083fe; }
+.share-btn--mastodon:hover { border-color: #6364ff; }
+.share-btn--x:hover { border-color: #e6e6e6; }
+.share-btn--copy { font-family: var(--sans); }
+
+/* Inline subscribe in post footer — tighter than landing */
+.post-footer-subscribe .subscribe { margin-top: 8px; max-width: none; }
+.post-footer-subscribe .hint { margin-top: 10px; }
+
+/* Related posts list */
+.related-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 720px) {
+  .related-list { grid-template-columns: 1fr 1fr; }
+  .related-item:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+}
+.related-item a {
+  display: block;
+  padding: 16px 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease;
+  height: 100%;
+}
+.related-item a:hover {
+  border-color: var(--purple);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.related-eyebrow {
+  display: block;
+  font-size: 0.75em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--purple-light);
+  margin-bottom: 6px;
+}
+.related-title {
+  display: block;
+  font-family: var(--serif);
+  font-size: 1.08em;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.related-item a:hover .related-title { color: var(--purple-light); }
+.related-excerpt {
+  display: block;
+  font-size: 0.9em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.article-back {
+  margin-top: 36px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .post-footer-card { padding: 22px 20px; }
+  .share-btn { padding: 9px 14px; font-size: 0.9em; }
+}
+

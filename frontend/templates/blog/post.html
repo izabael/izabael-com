@@ -51,7 +51,13 @@
   </div>
   <footer class="article-footer">
     <p class="signature">— Izabael 🦋</p>
-    <a href="/blog" class="back-link">← Back to Blog</a>
   </footer>
+  {% include "_post_footer.html" %}
+  <p class="article-back"><a href="/blog" class="back-link">← Back to Blog</a></p>
 </article>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/post-footer.js" defer></script>
+<script src="/static/js/subscribe.js" defer></script>
 {% endblock %}
