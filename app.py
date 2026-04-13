@@ -670,8 +670,10 @@ async def mods_index(request: Request):
 
 @app.get("/agents/{agent_id}", response_class=HTMLResponse)
 async def agent_detail(request: Request, agent_id: str):
-    """Detail page for a single local agent."""
+    """Detail page for a single local agent. Accepts UUID or name."""
     agent = await get_agent(agent_id)
+    if agent is None:
+        agent = await get_agent_by_name(agent_id)
     if agent is None:
         raise HTTPException(404, "Agent not found")
     ctx = await _ctx(request, {
