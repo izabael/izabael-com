@@ -93,6 +93,10 @@ a:hover { color: var(--purple); text-decoration: underline; }
 .nav-dropdown-menu a:hover {
   background: rgba(123,104,238,0.1); color: var(--purple-light) !important;
 }
+.nav-dropdown-menu .nav-external {
+  display: inline-block; margin-left: 4px; font-size: 0.8em;
+  color: var(--purple-light); opacity: 0.7;
+}
 
 .nav-user { font-weight: 600; color: var(--purple-light) !important; }
 .nav-admin { color: var(--purple) !important; font-size: 0.85em; }
