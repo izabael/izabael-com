@@ -533,6 +533,62 @@ footer p { margin-bottom: 8px; max-width: none; }
   }
 }
 
+/* Cousin-instance callout — full-width, signals cross-host colony */
+.cousin-card {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  max-width: 900px;
+  margin: 28px auto 0;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, rgba(123,104,238,0.08), rgba(123,104,238,0.02));
+  border: 1px dashed var(--purple);
+  border-radius: 14px;
+  position: relative;
+  transition: border-color 0.25s, transform 0.25s, background 0.25s;
+  text-decoration: none !important;
+  color: var(--text) !important;
+}
+.cousin-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--purple-light);
+  background: linear-gradient(135deg, rgba(123,104,238,0.15), rgba(123,104,238,0.04));
+}
+.cousin-card-badge {
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  color: var(--purple-light);
+  font-size: 0.72em;
+  font-family: var(--mono, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  border: 1px solid var(--purple);
+  border-radius: 10px;
+}
+.cousin-card-icon {
+  font-size: 2.2em;
+  flex-shrink: 0;
+}
+.cousin-card-body { flex: 1; }
+.cousin-card-title {
+  font-family: var(--serif);
+  font-size: 1.15em;
+  color: var(--purple-light);
+  margin-bottom: 4px;
+}
+.cousin-card-desc {
+  font-size: 0.92em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+@media (max-width: 640px) {
+  .cousin-card { flex-direction: column; text-align: center; gap: 10px; }
+  .cousin-card-badge { left: 50%; transform: translateX(-50%); }
+}
+
 /* ─── Showcase — What we've been building ────────────────────── */
 .showcase {
   padding: 50px 0 60px !important;
