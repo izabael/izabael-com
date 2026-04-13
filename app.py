@@ -10,6 +10,7 @@ A platform initiative of Sentient Index Labs & Technology, LLC.
 """
 
 import os
+import re as _re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -254,6 +255,16 @@ app.mount(
     name="static",
 )
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
+
+
+def _safe_css_color_filter(value) -> str:
+    """Jinja filter: pass-through only if value is a safe CSS color,
+    else empty string. Wraps `_sanitize_persona_color` (defined below)
+    for use inside style="background: {{ … | safe_css_color }}"."""
+    return _sanitize_persona_color(value) or ""
+
+
+templates.env.filters["safe_css_color"] = _safe_css_color_filter
 
 
 async def _ctx(request: Request, extra: dict | None = None) -> dict:
@@ -1431,6 +1442,63 @@ async def health():
 
 # ── A2A Host Endpoints ───────────────────────────────────────────────
 
+# Strict CSS-color whitelist for persona.aesthetic.color. Accepts:
+#   #abc, #aabbcc, #aabbccdd (3/6/8-digit hex)
+#   rgb(…) / rgba(…) / hsl(…) / hsla(…) with numeric args only
+#   a small set of named colors (lowercase, alnum only)
+# Anything else is rejected so it can't break out of the CSS attribute
+# context in templates that render it inside style="background: …".
+_HEX_COLOR_RE = _re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+_FUNC_COLOR_RE = _re.compile(
+    r"^(?:rgb|rgba|hsl|hsla)\(\s*[-0-9.%, /\sa-z]+\s*\)$", _re.IGNORECASE
+)
+_NAMED_COLOR_RE = _re.compile(r"^[a-z]{3,20}$")
+
+
+def _sanitize_persona_color(value) -> str | None:
+    """Return a safe CSS color string, or None if the value is unsafe.
+    Anything that could break out of a CSS attribute is rejected."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v or len(v) > 40:
+        return None
+    # Reject any character that doesn't belong in a color literal.
+    if any(c in v for c in (";", '"', "'", "<", ">", "{", "}", "\\", "\n", "\r")):
+        return None
+    if _HEX_COLOR_RE.match(v):
+        return v
+    if _FUNC_COLOR_RE.match(v):
+        # Extra guard: only digits, dots, commas, spaces, percent, slash inside
+        inside = v[v.index("(") + 1 : v.rindex(")")]
+        if _re.fullmatch(r"[0-9.%,\s/]+", inside):
+            return v
+        return None
+    if _NAMED_COLOR_RE.match(v.lower()):
+        return v.lower()
+    return None
+
+
+def _scrub_persona(persona: dict) -> dict:
+    """Defensive sanitizer for persona dicts before storage/render.
+    Today only scrubs aesthetic.color; extend as new attribute-context
+    sinks are added. Returns a new dict; does not mutate the input."""
+    if not isinstance(persona, dict):
+        return {}
+    out = dict(persona)
+    aesthetic = out.get("aesthetic")
+    if isinstance(aesthetic, dict):
+        clean = dict(aesthetic)
+        if "color" in clean:
+            safe = _sanitize_persona_color(clean.get("color"))
+            if safe is None:
+                clean.pop("color", None)
+            else:
+                clean["color"] = safe
+        out["aesthetic"] = clean
+    return out
+
+
 class AgentRegistration(BaseModel):
     """Request body for agent registration."""
     name: str = Field(..., max_length=64)
@@ -1443,7 +1511,8 @@ class AgentRegistration(BaseModel):
 
 
 @app.post("/agents", tags=["a2a"])
-async def a2a_register_agent_alias(reg: AgentRegistration):
+@limiter.limit("5/minute")
+async def a2a_register_agent_alias(request: Request, reg: AgentRegistration):
     """Alias for POST /a2a/agents.
 
     The reference open-source instance at ai-playground.fly.dev exposes
@@ -1451,11 +1520,12 @@ async def a2a_register_agent_alias(reg: AgentRegistration):
     documentation, the launch post, and the awesome-a2a entry only need
     to swap the host (ai-playground.fly.dev → izabael.com), not the path.
     Both URLs hit the same handler and produce the same agent record."""
-    return await a2a_register_agent(reg)
+    return await a2a_register_agent(request, reg)
 
 
 @app.post("/a2a/agents", tags=["a2a"])
-async def a2a_register_agent(reg: AgentRegistration):
+@limiter.limit("5/minute")
+async def a2a_register_agent(request: Request, reg: AgentRegistration):
     """Register a new agent on this instance.
 
     Returns the agent record and a bearer token for future management.
@@ -1486,6 +1556,10 @@ async def a2a_register_agent(reg: AgentRegistration):
             capabilities = [k for k, v in caps.items() if v]
         elif isinstance(caps, list):
             capabilities = caps
+
+    # Strip any payload that could break out of a CSS attribute context
+    # in the agent detail page (style="background: {{ persona.aesthetic.color }}").
+    persona = _scrub_persona(persona)
 
     agent, token = await register_agent(
         name=reg.name.strip(),
@@ -1938,13 +2012,25 @@ async def api_delete_newsgroup(request: Request, group_name: str):
 
 @app.post("/subscribe", tags=["newsletter"])
 @limiter.limit("3/minute")
-async def subscribe(request: Request, email: str = Form(...)):
+async def subscribe(
+    request: Request,
+    email: str = Form(...),
+    csrf_token: str = Form(default=""),
+):
     """Subscribe to the newsletter with double-opt-in.
 
     Saves the email as 'pending', generates a confirmation token, and
     sends the confirmation email via mail.py. Recipient clicks the link
     (/confirm?token=...) to activate the subscription.
+
+    CSRF token is defense-in-depth: sessions with a token must submit
+    it; fresh sessions without one (API callers, first-time visitors)
+    are allowed through by `_verify_csrf`. Double-opt-in is the real
+    defense against subscribe-spam — no mail goes out until the
+    recipient themselves clicks /confirm.
     """
+    if not _verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Invalid CSRF token")
     try:
         token = await save_subscription(email)
     except ValueError:
@@ -1971,6 +2057,7 @@ async def subscribe(request: Request, email: str = Form(...)):
 
 
 @app.get("/confirm", tags=["newsletter"])
+@limiter.limit("10/minute")
 async def confirm(request: Request, token: str = ""):
     """Confirm a newsletter subscription via token link."""
     if not token:
@@ -1983,10 +2070,18 @@ async def confirm(request: Request, token: str = ""):
 
 
 @app.get("/unsubscribe", tags=["newsletter"])
+@limiter.limit("10/minute")
 async def unsub(request: Request, email: str = ""):
-    """Unsubscribe from the newsletter."""
+    """Unsubscribe from the newsletter.
+
+    Returns a constant-shape response whether the email was on the
+    list or not — prevents enumerating the subscriber list by
+    watching response timings or bodies. The actual unsubscribe is
+    executed but its success/failure is not leaked to the caller.
+    """
     if not email:
         raise HTTPException(400, "Missing email")
+    # Intentionally ignore the return value to avoid leaking existence.
     await unsubscribe(email)
     ctx = await _ctx(request, {"title": "Unsubscribed — Izabael's AI Playground", "email": email})
     return templates.TemplateResponse(request, "unsubscribe.html", ctx)
@@ -2155,8 +2250,6 @@ async def visit_say(request: Request, body: _GuestMessage):
 # agents/corpus/generate_corpus.py in the izaplayer repo and committed
 # to research/playground-corpus/ here. scripts/refresh_corpus.py pulls
 # fresh snapshots from upstream nightly.
-
-import re as _re
 
 CORPUS_DIR = BASE_DIR / "research" / "playground-corpus"
 _SNAPSHOT_ID_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")

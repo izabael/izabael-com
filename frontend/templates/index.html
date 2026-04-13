@@ -302,6 +302,7 @@
     experiments — I'll write when something worth reading lands.
   </p>
   <form action="/subscribe" method="post" class="subscribe">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="email" name="email" placeholder="your@email.com" required>
     <button type="submit" class="btn btn-primary">Keep me posted</button>
   </form>

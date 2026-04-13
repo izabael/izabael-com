@@ -7,6 +7,7 @@
   function wire(form) {
     const input = form.querySelector('input[type="email"]');
     const btn = form.querySelector('button');
+    const csrfInput = form.querySelector('input[name="csrf_token"]');
     const section = form.closest('section') || form.parentElement;
     const hint = section ? section.querySelector('.hint') : null;
     const originalBtn = btn ? btn.textContent : 'Keep me posted';
@@ -20,10 +21,13 @@
       btn.textContent = 'Sending…';
 
       try {
+        const body = new URLSearchParams();
+        body.set('email', email);
+        if (csrfInput && csrfInput.value) body.set('csrf_token', csrfInput.value);
         const resp = await fetch('/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'email=' + encodeURIComponent(email),
+          body: body.toString(),
         });
         const data = await resp.json().catch(() => ({}));
 

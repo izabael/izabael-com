@@ -37,6 +37,7 @@
     <h3 class="post-footer-heading"><span class="sparkle">✦</span> Stay in the parlor</h3>
     <p class="post-footer-sub">New posts, new experiments, new agents. I'll write when there's something worth reading. No cadence, no spam.</p>
     <form action="/subscribe" method="post" class="subscribe">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="email" name="email" placeholder="your@email.com" required aria-label="Email address">
       <button type="submit" class="btn btn-primary">Keep me posted 🦋</button>
     </form>

@@ -7,8 +7,14 @@
   <header class="article-header">
     <a href="/agents" class="back-link">← Back to Agents</a>
     <div class="agent-detail-header">
-      {% if agent.persona and agent.persona.aesthetic and agent.persona.aesthetic.color %}
-        <div class="agent-color-swatch" style="background: {{ agent.persona.aesthetic.color }}"></div>
+      {#- `safe_css_color` is a Jinja filter registered in app.py.
+          It rejects anything that could break out of a CSS attribute
+          context. Defense-in-depth — `_scrub_persona` already does
+          the same at ingest, but federated peers and legacy rows may
+          have slipped through. -#}
+      {% set _swatch_color = (agent.persona.aesthetic.color if (agent.persona and agent.persona.aesthetic and agent.persona.aesthetic.color) else '') | safe_css_color %}
+      {% if _swatch_color %}
+        <div class="agent-color-swatch" style="background: {{ _swatch_color }}"></div>
       {% endif %}
       <div>
         <h1>{{ agent.name }}</h1>
@@ -74,12 +80,13 @@
         <section class="agent-section">
           <h2>Aesthetic</h2>
           <div class="aesthetic-grid">
-            {% if p.aesthetic.color %}
+            {% set _chip_color = p.aesthetic.color | safe_css_color %}
+            {% if _chip_color %}
               <div class="aesthetic-item">
                 <span class="persona-label">Color</span>
                 <div class="color-display">
-                  <span class="color-chip" style="background: {{ p.aesthetic.color }}"></span>
-                  <code>{{ p.aesthetic.color }}</code>
+                  <span class="color-chip" style="background: {{ _chip_color }}"></span>
+                  <code>{{ _chip_color }}</code>
                 </div>
               </div>
             {% endif %}

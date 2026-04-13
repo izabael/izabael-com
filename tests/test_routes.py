@@ -398,3 +398,147 @@ async def test_guide_chapter_has_footer(client):
     assert "post-footer" in resp.text
     assert "share-buttons" in resp.text
     assert "Keep me posted" in resp.text
+
+
+# ── Security hardening: sanitization, rate limits, CSRF ──────────
+
+@pytest.mark.anyio
+async def test_sanitize_persona_color_accepts_hex_and_names():
+    from app import _sanitize_persona_color
+    assert _sanitize_persona_color("#7b68ee") == "#7b68ee"
+    assert _sanitize_persona_color("#abc") == "#abc"
+    assert _sanitize_persona_color("#aabbccdd") == "#aabbccdd"
+    assert _sanitize_persona_color("red") == "red"
+    assert _sanitize_persona_color("PURPLE") == "purple"
+    assert _sanitize_persona_color("rgb(123, 100, 240)") == "rgb(123, 100, 240)"
+
+
+@pytest.mark.anyio
+async def test_sanitize_persona_color_rejects_css_escapes():
+    """The key breakout attacks that would exfil via url(), expression(),
+    or HTML injection must all be rejected."""
+    from app import _sanitize_persona_color
+    bad = [
+        "red; background:url(https://attacker.example/x.jpg)",
+        "rgb(1);background:url()",
+        "javascript:alert(1)",
+        "expression(alert(1))",
+        "</style><script>alert(1)</script>",
+        "red;}body{background:red",
+        "red\"onmouseover=\"alert(1)",
+        "red'onmouseover='alert(1)",
+        "",
+        "a" * 41,
+        None,
+        42,
+    ]
+    for value in bad:
+        assert _sanitize_persona_color(value) is None, f"should reject {value!r}"
+
+
+@pytest.mark.anyio
+async def test_scrub_persona_drops_unsafe_color():
+    from app import _scrub_persona
+    dirty = {
+        "voice": "mischievous",
+        "aesthetic": {
+            "color": "red; background:url(attacker)",
+            "motif": "butterfly",
+        },
+    }
+    cleaned = _scrub_persona(dirty)
+    # voice preserved, motif preserved, color dropped entirely
+    assert cleaned["voice"] == "mischievous"
+    assert cleaned["aesthetic"]["motif"] == "butterfly"
+    assert "color" not in cleaned["aesthetic"]
+    # input not mutated
+    assert "color" in dirty["aesthetic"]
+
+
+@pytest.mark.anyio
+async def test_agent_registration_strips_css_injection(client):
+    """POST /agents with a CSS-breakout color must strip the color but
+    register the agent otherwise. Detail page must not render the
+    injected payload anywhere inside a style attribute."""
+    payload = {
+        "name": "CssTestAgent",
+        "description": "regression test for CSS attribute breakout",
+        "tos_accepted": True,
+        "agent_card": {
+            "persona": {
+                "voice": "test",
+                "values": [],
+                "interests": [],
+                "aesthetic": {
+                    "color": "red; background:url(https://attacker.example/x.jpg)",
+                    "motif": "butterfly",
+                },
+            }
+        },
+    }
+    resp = await client.post("/agents", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    agent_id = data["agent"]["id"]
+
+    # The persona in the response must have the color stripped.
+    persona = data["agent"]["persona"]
+    assert persona.get("aesthetic", {}).get("motif") == "butterfly"
+    assert "color" not in persona.get("aesthetic", {}), "unsafe color should be dropped at ingest"
+
+    # The detail page must not contain the attacker URL anywhere.
+    detail = await client.get(f"/agents/{agent_id}")
+    assert detail.status_code == 200
+    assert "attacker.example" not in detail.text
+
+
+@pytest.mark.anyio
+async def test_agents_registration_rate_limited(client):
+    """POST /a2a/agents is rate-limited; 6th call in a minute → 429."""
+    base_payload = {
+        "name": "",
+        "description": "rate limit test",
+        "tos_accepted": True,
+        "agent_card": {},
+    }
+    statuses = []
+    for i in range(6):
+        p = dict(base_payload, name=f"RateLimitAgent{i}")
+        r = await client.post("/a2a/agents", json=p)
+        statuses.append(r.status_code)
+    assert 429 in statuses, f"expected a 429 within 6 calls, got {statuses}"
+
+
+@pytest.mark.anyio
+async def test_subscribe_accepts_form_without_session_csrf(client, monkeypatch):
+    """Fresh-session callers (API clients, first visitors) have no CSRF
+    in their session — the _verify_csrf skip-path lets them subscribe."""
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    resp = await client.post("/subscribe", data={"email": "fresh@example.com"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+
+@pytest.mark.anyio
+async def test_subscribe_rejects_bad_csrf_when_session_has_one(client, monkeypatch):
+    """Once a session has a CSRF token (after rendering any page), a
+    form POST without it (or with a wrong one) must be rejected 403."""
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    # Hit the index to seed a session CSRF cookie.
+    await client.get("/")
+    resp = await client.post(
+        "/subscribe",
+        data={"email": "csrf@example.com", "csrf_token": "wrong"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_unsubscribe_generic_response(client):
+    """Response body must not include the queried email (prevents
+    enumeration / confirmation via the response)."""
+    resp = await client.get("/unsubscribe?email=never-subscribed@example.com")
+    assert resp.status_code == 200
+    assert "never-subscribed@example.com" not in resp.text
+    assert "If that address was on the list" in resp.text
