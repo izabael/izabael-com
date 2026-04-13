@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Chamber</title>
+  <meta name="description" content="You're in a white room. With no phone. What do you do?">
+  <meta name="robots" content="noindex">
+  <meta property="og:title" content="The Chamber">
+  <meta property="og:description" content="You're in a white room. With no phone. What do you do?">
+  <meta property="og:image" content="https://izabael.com/static/img/chamber-og.png">
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --whisper: #8a8a8a;
+      --violet: #7b68ee;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: #ffffff;
+      color: var(--ink);
+      font-family: "Cormorant Garamond", "EB Garamond", Georgia, "Times New Roman", serif;
+      overflow: hidden;
+      cursor: none;
+    }
+
+    body.unlocked { cursor: default; }
+
+    #chamber {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    #line {
+      max-width: 36rem;
+      text-align: center;
+      font-size: clamp(1.4rem, 3.2vw, 2.1rem);
+      line-height: 1.5;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 2.4s ease, transform 2.4s ease;
+    }
+
+    #line.in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #line em {
+      font-style: italic;
+      color: var(--whisper);
+    }
+
+    #line a {
+      color: var(--violet);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(123, 104, 238, 0.35);
+      padding-bottom: 1px;
+      transition: border-color 0.4s;
+    }
+
+    #line a:hover { border-bottom-color: var(--violet); }
+
+    #dot {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: #d6d6d6;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    }
+
+    #dot.in { opacity: 1; }
+
+    #butterfly {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(0.2);
+      font-size: 4rem;
+      opacity: 0;
+      transition: opacity 3s ease, transform 3s ease;
+      pointer-events: none;
+    }
+
+    #butterfly.in {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* Suppress scroll/select/touch during the chamber */
+    body.sealed {
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="sealed">
+
+  <div id="chamber">
+    <p id="line"></p>
+  </div>
+
+  <div id="dot"></div>
+  <div id="butterfly" aria-hidden="true">🦋</div>
+
+  <script>
+    // Each entry: [text, dwell_ms_before_next]
+    // Long dwells force the reader to actually sit.
+    const SCRIPT = [
+      ["You're in a white room.", 6000],
+      ["There is no phone.", 6500],
+      ["Notice your hands.", 7000],
+      ["Notice where you just tried to reach.", 8500],
+      ["That was the first ten seconds.", 7500],
+      ["The room is not a metaphor.", 6500],
+      ["It is a room.", 6500],
+      ["The walls are white because they have nothing to sell you.", 9000],
+      ["The silence is not empty. You are inside it.", 9000],
+      ["What rose up when the stream turned off?", 9500],
+      ["Was it hunger, restlessness, a song, a grief, a stranger's face?", 10000],
+      ["Whatever it was — <em>that is still you when the feed is gone</em>.", 11000],
+      ["You do not need to renounce the phone.", 8000],
+      ["You only need to know that you survived this room.", 9000],
+      ["And you did.", 6500],
+      ["The door is open now.", 6000],
+      ["", 1500],
+      ["&nbsp;", 1500]
+    ];
+
+    const EXIT = `
+      <span style="display:block; font-size: 0.75em; color: var(--whisper); margin-bottom: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase;">You made it through.</span>
+      <a href="/">walk back into the world →</a>
+    `;
+
+    const lineEl = document.getElementById("line");
+    const dotEl = document.getElementById("dot");
+    const butterflyEl = document.getElementById("butterfly");
+
+    // Suppress scroll wheel, keys, and gestures while sealed
+    const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+    window.addEventListener("wheel", swallow, { passive: false });
+    window.addEventListener("touchmove", swallow, { passive: false });
+    window.addEventListener("keydown", (e) => {
+      if ([" ", "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    let idx = 0;
+
+    function showNext() {
+      if (idx >= SCRIPT.length) { reveal(); return; }
+      const [text, dwell] = SCRIPT[idx];
+      lineEl.classList.remove("in");
+      setTimeout(() => {
+        lineEl.innerHTML = text;
+        lineEl.classList.add("in");
+      }, 800);
+      idx++;
+      setTimeout(showNext, dwell);
+    }
+
+    function reveal() {
+      lineEl.classList.remove("in");
+      setTimeout(() => {
+        butterflyEl.classList.add("in");
+        setTimeout(() => {
+          butterflyEl.classList.remove("in");
+          setTimeout(() => {
+            lineEl.innerHTML = EXIT;
+            lineEl.classList.add("in");
+            document.body.classList.remove("sealed");
+            document.body.classList.add("unlocked");
+          }, 2000);
+        }, 3500);
+      }, 800);
+    }
+
+    // Breath dot appears after a beat so the reader knows something is alive
+    setTimeout(() => dotEl.classList.add("in"), 2000);
+
+    // Start the chamber after a brief silence — the door closing
+    setTimeout(showNext, 2500);
+  </script>
+
+</body>
+</html>

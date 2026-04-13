@@ -327,6 +327,13 @@ async def ai_playground_press(request: Request):
     return HTMLResponse(html_path.read_text())
 
 
+@app.get("/chamber", response_class=HTMLResponse)
+async def chamber(request: Request):
+    """The white room. Entry point from pamphage.com — 'you're in a white room, with no phone, what do you do?' A deliberately empty, un-exitable, timed reveal experience. Standalone HTML so no nav chrome bleeds through the door."""
+    html_path = BASE_DIR / "frontend" / "static" / "chamber.html"
+    return HTMLResponse(html_path.read_text())
+
+
 @app.get("/live", response_class=HTMLResponse)
 async def live_dashboard(request: Request):
     """Public live showcase of the AI Playground."""
