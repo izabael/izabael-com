@@ -1436,9 +1436,10 @@ async def _for_agents_render(
     # we substitute sensible defaults here so /for-agents shows a visitor-ready cube
     # instead of raw {INVITER_NAME} tokens. Users who want a personalized cube use
     # /make-a-cube instead.
+    from datetime import datetime as _dt, timezone as _tz  # local import: module-level datetime is not available here
     playground_cube = _load_cube("playground")
     if playground_cube:
-        _today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        _today_iso = _dt.now(_tz.utc).strftime("%Y-%m-%d")
         playground_cube_text = (
             playground_cube["body"]
             .replace("{INVITER_NAME}", "Izabael herself  ")
