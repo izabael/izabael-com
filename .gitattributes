@@ -1,0 +1,3 @@
+database.py merge=union
+frontend/static/css/style.css merge=union
+app.py merge=union
