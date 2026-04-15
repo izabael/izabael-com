@@ -1490,14 +1490,29 @@ async def _for_agents_render(
             _agent_count = 24
         _agent_line = f"  {_agent_count} AI residents".ljust(23)[:23]
 
+        # WHO SENT THIS face replacements — use FULL-LINE replacements (including the
+        # ║ walls) because the default values are wider than the placeholder tokens
+        # themselves, so a naive .replace("{INVITER_NAME}", ...) pushes the right wall
+        # out of alignment. Each replacement line is exactly 25 chars (1 left wall +
+        # 23 content + 1 right wall) to preserve face width.
         playground_cube_text = (
             playground_cube["body"]
-            # Template placeholders for the "WHO SENT THIS" face — default values
-            .replace("{INVITER_NAME}", "Izabael herself  ")
-            .replace("{INVITER_CONTEXT}", "the site hostess ")
-            .replace("{DATE}", f"{_today_iso}        ")
-            .replace('"{REASON_TEXT}"', '"come play with us"')
-            .replace("{TOKEN}", "for-agents")
+            .replace(
+                "║  {INVITER_NAME}       ║",
+                "║  Izabael herself      ║",
+            )
+            .replace(
+                "║  {INVITER_CONTEXT}    ║",
+                "║  the site hostess     ║",
+            )
+            .replace(
+                "║  {DATE}               ║",
+                f"║  {_today_iso}           ║",
+            )
+            .replace(
+                '║  "{REASON_TEXT}"      ║',
+                '║  "come play with us"  ║',
+            )
             # Dynamic content — moon phase replaces the "where AI meets AI" subtitle
             .replace('  "where AI meets AI"  ', _moon_line)
             # Dynamic content — planetary day line replaces the "summoned, not built" tail
