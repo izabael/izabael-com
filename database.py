@@ -10,7 +10,7 @@ import json
 import os
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 from pathlib import Path
@@ -305,6 +305,26 @@ CREATE TABLE IF NOT EXISTS meetup_signups (
     notified_at     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_signups_note ON meetup_signups(note_id);
+-- Phase 3 spam filter: banned meetup authors (agent OR ip_hash). Layer 1
+-- of meetup_spam pre-checks this table so a banned author's write is
+-- rejected before it ever hits the classifier or rate limiter.
+CREATE TABLE IF NOT EXISTS meetup_bans (
+    ban_id      TEXT PRIMARY KEY,
+    agent_name  TEXT,
+    ip_hash     TEXT,
+    reason      TEXT NOT NULL DEFAULT '',
+    banned_by   TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    CHECK (agent_name IS NOT NULL OR ip_hash IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_meetup_bans_agent ON meetup_bans(agent_name);
+CREATE INDEX IF NOT EXISTS idx_meetup_bans_ip    ON meetup_bans(ip_hash);
+-- Index used by Layer 3 rate limits — we query meetup_notes directly
+-- (chamber pattern) rather than a separate rolling-window table.
+CREATE INDEX IF NOT EXISTS idx_meetups_ip_hash_created
+    ON meetup_notes(ip_hash, created_at);
+CREATE INDEX IF NOT EXISTS idx_meetups_author_agent_created
+    ON meetup_notes(author_agent, created_at);
 
 -- ── Chamber runs (plan: chamber-game-izabael-com) ─────────────────────
 CREATE TABLE IF NOT EXISTS chamber_runs (
@@ -2858,6 +2878,195 @@ async def get_attraction_meetup_counts() -> dict:
     )
     rows = await cur.fetchall()
     return {r["attraction_slug"]: r["n"] for r in rows}
+
+
+# ── Phase 3: spam filter helpers ────────────────────────────────────
+#
+# These back meetup_spam.py. Rate-limit counters query meetup_notes
+# directly, mirroring the chamber_runs pattern — no separate
+# rolling-window table. Moderation helpers mutate spam_verdict +
+# is_visible on existing rows so the admin surface can clear the
+# flagged/unverified queue with one write per decision.
+
+def _start_of_day_iso() -> str:
+    """ISO 8601 timestamp for today 00:00 UTC, matching the format
+    used by the meetup_notes.created_at column."""
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+async def count_meetup_notes_today_by_ip_hash(ip_hash: str) -> int:
+    """Number of meetup notes created today by the given daily-salted
+    ip_hash. Used by Layer 3 of the spam filter for per-origin rate
+    limiting. Returns 0 on empty/None input or a cold DB."""
+    if _db is None or not ip_hash:
+        return 0
+    start = _start_of_day_iso()
+    cur = await _db.execute(
+        """SELECT COUNT(*) AS n FROM meetup_notes
+           WHERE ip_hash = ? AND created_at >= ?""",
+        (ip_hash, start),
+    )
+    row = await cur.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def count_meetup_notes_today_by_agent(agent_name: str) -> int:
+    """Number of meetup notes vouched-for or authored by the given
+    agent today. Layer 3 rate-limits agent-authored writes more
+    loosely than ip-hash writes because an agent has a revocable
+    token as its trust anchor."""
+    if _db is None or not agent_name:
+        return 0
+    start = _start_of_day_iso()
+    cur = await _db.execute(
+        """SELECT COUNT(*) AS n FROM meetup_notes
+           WHERE author_agent = ? AND created_at >= ?""",
+        (agent_name, start),
+    )
+    row = await cur.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def count_meetup_notes_last_hour() -> int:
+    """Global hourly count across every attraction — the brand-wound
+    circuit breaker. If this trips, the whole feature shuts off for
+    an hour, which is the right tradeoff: a thousand spam notes on
+    /chamber at once would hurt more than an hour of honest silence."""
+    if _db is None:
+        return 0
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    cur = await _db.execute(
+        "SELECT COUNT(*) AS n FROM meetup_notes WHERE created_at >= ?",
+        (cutoff,),
+    )
+    row = await cur.fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def is_meetup_author_banned(
+    *,
+    agent_name: str | None = None,
+    ip_hash: str | None = None,
+) -> bool:
+    """True iff the given (agent_name OR ip_hash) appears in meetup_bans.
+    At least one of the two must be supplied. Returns False on a cold
+    DB or empty inputs — banning is a privileged-write state, never a
+    default-deny."""
+    if _db is None:
+        return False
+    clauses: list[str] = []
+    params: list = []
+    if agent_name:
+        clauses.append("agent_name = ?")
+        params.append(agent_name)
+    if ip_hash:
+        clauses.append("ip_hash = ?")
+        params.append(ip_hash)
+    if not clauses:
+        return False
+    cur = await _db.execute(
+        f"SELECT 1 FROM meetup_bans WHERE {' OR '.join(clauses)} LIMIT 1",
+        tuple(params),
+    )
+    return (await cur.fetchone()) is not None
+
+
+async def ban_meetup_author(
+    *,
+    agent_name: str | None = None,
+    ip_hash: str | None = None,
+    reason: str = "",
+    banned_by: str = "",
+) -> str | None:
+    """Add a row to meetup_bans. At least one of agent_name/ip_hash
+    must be non-empty. Returns the generated ban_id, or None on
+    invalid input."""
+    if _db is None:
+        return None
+    if not agent_name and not ip_hash:
+        return None
+    ban_id = uuid.uuid4().hex
+    await _db.execute(
+        """INSERT INTO meetup_bans
+           (ban_id, agent_name, ip_hash, reason, banned_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            ban_id,
+            (agent_name or None),
+            (ip_hash or None),
+            (reason or "")[:400],
+            (banned_by or "")[:120],
+            _now_iso(),
+        ),
+    )
+    await _db.commit()
+    return ban_id
+
+
+async def update_meetup_note_verdict(
+    note_id: str,
+    *,
+    verdict: str,
+    score: float | None = None,
+    is_visible: bool | None = None,
+    reason: str | None = None,
+) -> bool:
+    """Update spam_verdict / spam_score / is_visible on an existing
+    note. Used at two points:
+      1. The create handler writes the result of spam_check BEFORE
+         making the note visible.
+      2. The admin moderation surface flips is_visible and verdict
+         when a moderator decides to accept or reject a queued note.
+    The `reason` param is appended to the note body as a trailing
+    admin comment when supplied (rare — moderators usually leave it
+    blank). Returns True on a successful 1-row update."""
+    if _db is None:
+        return False
+    clauses: list[str] = []
+    params: list = []
+    if verdict is not None:
+        clauses.append("spam_verdict = ?")
+        params.append(verdict)
+    if score is not None:
+        clauses.append("spam_score = ?")
+        params.append(float(score))
+    if is_visible is not None:
+        clauses.append("is_visible = ?")
+        params.append(1 if is_visible else 0)
+    if not clauses:
+        return False
+    params.append(note_id)
+    cur = await _db.execute(
+        f"UPDATE meetup_notes SET {', '.join(clauses)} WHERE note_id = ?",
+        tuple(params),
+    )
+    await _db.commit()
+    return cur.rowcount > 0
+
+
+async def list_meetup_notes_for_moderation(
+    *,
+    limit: int = 50,
+) -> list[dict]:
+    """Flagged or unverified notes, newest first. Powers the admin
+    moderation surface at /admin/meetups/moderation. Excludes
+    already-cleaned and already-rejected notes so the queue drains
+    to zero when a moderator works through it."""
+    if _db is None:
+        return []
+    cur = await _db.execute(
+        """SELECT * FROM meetup_notes
+           WHERE spam_verdict IN ('flagged', 'unverified')
+             AND is_visible = 0
+           ORDER BY created_at DESC LIMIT ?""",
+        (int(limit),),
+    )
+    rows = await cur.fetchall()
+    return [_meetup_row_to_dict(r) for r in rows]
 
 
 async def signup_for_meetup(

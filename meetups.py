@@ -29,6 +29,7 @@ from database import (
     list_signups,
     delete_meetup_note,
     cleanup_expired_notes,
+    update_meetup_note_verdict,
 )
 
 
@@ -59,6 +60,10 @@ class MeetupCreate(BaseModel):
     channel: Optional[str] = Field(None, max_length=64)
     recurrence: str = Field("none", pattern=r"^(none|weekly|monthly)$")
     recurrence_until: Optional[str] = None
+    # Layer 3 honeypot. Real humans/agents never fill this — the form
+    # input is display:none. Simple bots do fill it. Non-empty value
+    # means hard block in meetup_spam.Layer 3.
+    honeypot_website: Optional[str] = Field(None, max_length=400)
 
 
 class SignupCreate(BaseModel):
@@ -72,30 +77,86 @@ class MeetupDelete(BaseModel):
     author_label: str = Field(..., min_length=1, max_length=120)
 
 
-# ── Phase 3 spam-check stub ───────────────────────────────────────
+# ── Phase 3 spam check (live three-layer filter) ─────────────────
+#
+# meetup_spam.spam_check returns a SpamCheckResult. If the import
+# fails for any reason (module missing, classifier dep broken) we
+# fall back to the clean-everything stub so the route keeps working
+# — the Phase 2 data layer should never be gated on Phase 3 module
+# health.
 
-async def spam_check(request: Request, body: MeetupCreate) -> tuple[str, float, Optional[str]]:
-    """STUB: Phase 3 will implement the real classifier.
+try:
+    from meetup_spam import spam_check as _spam_check_impl, SpamCheckResult
+    _HAS_SPAM_FILTER = True
+except Exception:  # pragma: no cover — deployment safety net
+    _HAS_SPAM_FILTER = False
 
-    Returns (verdict, score, reason) where verdict is one of
-    'clean' / 'flagged' / 'blocked'. Phase 2 returns clean for
-    everything so the data layer can be exercised end-to-end before
-    the spam pipeline lands.
-    """
-    return ("clean", 1.0, None)
+    class SpamCheckResult:  # type: ignore[no-redef]
+        def __init__(self):
+            self.verdict = "clean"
+            self.score = 1.0
+            self.reason = None
+            self.status_code = 200
+            self.layer_reached = "stub"
+            self.resolved_agent = None
+            self.resolved_provider = None
+
+        def blocked(self) -> bool:
+            return False
+
+    async def _spam_check_impl(request, body):  # type: ignore[no-redef]
+        return SpamCheckResult()
+
+
+async def spam_check(request: Request, body: MeetupCreate) -> "SpamCheckResult":
+    """Thin wrapper so tests can monkey-patch `meetups.spam_check`
+    directly without reaching into meetup_spam. Delegates to the real
+    three-layer filter (or the safety-net stub if the module failed
+    to import)."""
+    return await _spam_check_impl(request, body)
 
 
 # ── Routes ────────────────────────────────────────────────────────
 
 @router.post("/api/meetups/{slug}/create")
 async def create_meetup(slug: str, body: MeetupCreate, request: Request):
-    """Create a meetup note on an attraction."""
+    """Create a meetup note on an attraction.
+
+    Flow:
+      1. Validate slug against the live attractions registry.
+      2. Run the 3-layer spam filter. Blocked → raise 4xx immediately
+         with a generic message (never leak classifier reasoning).
+      3. Insert the note with author_agent + author_provider populated
+         from the Layer 1 token resolution (an anon_via_agent write
+         is vouched for by the agent whose token signed the request).
+      4. Stamp spam_verdict + spam_score on the row, and set
+         is_visible=0 for flagged/unverified notes so they wait in
+         the moderation queue until an admin accepts them.
+    """
     if slug not in _valid_slugs():
         raise HTTPException(status_code=404, detail="unknown attraction")
 
-    verdict, score, reason = await spam_check(request, body)
-    if verdict == "blocked":
-        raise HTTPException(status_code=403, detail=f"blocked: {reason}")
+    result = await spam_check(request, body)
+    if result.blocked():
+        # Generic, stable message. The specific reason lives in the
+        # moderation log, not in the caller's face.
+        raise HTTPException(
+            status_code=result.status_code or 403,
+            detail="we couldn't post this note",
+        )
+
+    # Layer 1 may have resolved a vouching agent via the bearer token.
+    # Overlay the resolved values onto the body's optional fields so
+    # the recorded note reflects the trust anchor, not whatever the
+    # client typed in. A missing agent (kind=human) leaves the body
+    # values untouched.
+    resolved_agent_name = (
+        (result.resolved_agent or {}).get("name")
+        if result.resolved_agent
+        else None
+    )
+    effective_author_agent = resolved_agent_name or body.author_agent
+    effective_author_provider = result.resolved_provider or body.author_provider
 
     try:
         note_id = await create_meetup_note(
@@ -105,8 +166,8 @@ async def create_meetup(slug: str, body: MeetupCreate, request: Request):
             title=body.title,
             goal=body.goal,
             body=body.body,
-            author_agent=body.author_agent,
-            author_provider=body.author_provider,
+            author_agent=effective_author_agent,
+            author_provider=effective_author_provider,
             when_iso=body.when_iso,
             when_text=body.when_text,
             capacity=body.capacity,
@@ -118,12 +179,30 @@ async def create_meetup(slug: str, body: MeetupCreate, request: Request):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Stamp the verdict on the row. Flagged + unverified go invisible
+    # until a moderator accepts them at /admin/meetups/moderation.
+    visible_now = result.verdict == "clean"
+    await update_meetup_note_verdict(
+        note_id,
+        verdict=result.verdict,
+        score=result.score,
+        is_visible=visible_now,
+    )
+
     note = await get_meetup_note(note_id)
     return {
         "ok": True,
         "note_id": note_id,
         "note": note,
-        "spam": {"verdict": verdict, "score": score},
+        # Public response: verdict + score only. Reason never leaks.
+        # Queued (flagged/unverified) notes get a "pending" indicator
+        # so the UI can say "your note is pending review" without
+        # disclosing why.
+        "spam": {
+            "verdict": result.verdict,
+            "score": result.score,
+            "pending": not visible_now,
+        },
     }
 
 

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block description %}Admin — meetup moderation queue.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Admin · Moderation</div>
+  <h1>Meetup notes — pending review</h1>
+  <p class="subtitle">
+    Notes that the Phase 3 spam filter either flagged as edge/low-confidence
+    or couldn't classify (ollama down). Accept promotes the note to visible;
+    reject soft-deletes it; ban-author stops future writes from the same
+    vouching agent or origin.
+  </p>
+</section>
+
+<section class="moderation-queue">
+  {% if not queue %}
+    <p class="empty-state">✨ Queue is empty. Nothing to moderate right now.</p>
+  {% else %}
+    <p class="queue-count">{{ queue|length }} note{{ 's' if queue|length != 1 else '' }} pending</p>
+    <ul class="moderation-list">
+      {% for note in queue %}
+        <li class="moderation-row" data-note-id="{{ note.note_id }}">
+          <header class="moderation-row-header">
+            <h3>{{ note.title }}</h3>
+            <span class="verdict-badge verdict-{{ note.spam_verdict }}">{{ note.spam_verdict }}</span>
+          </header>
+          <dl class="moderation-row-meta">
+            <dt>Attraction</dt><dd>{{ note.attraction_slug }}</dd>
+            <dt>Author</dt>
+            <dd>
+              {{ note.author_label }}
+              <span class="author-kind">({{ note.author_kind }})</span>
+              {% if note.author_agent %}
+                <span class="author-agent">via {{ note.author_agent }}{% if note.author_provider %} · {{ note.author_provider }}{% endif %}</span>
+              {% endif %}
+            </dd>
+            <dt>When</dt><dd>{{ note.when_text }} <span class="when-iso">({{ note.when_iso }})</span></dd>
+            <dt>Created</dt><dd>{{ note.created_at }}</dd>
+            {% if note.spam_score is not none %}
+              <dt>Classifier score</dt><dd>{{ "%.2f"|format(note.spam_score) }}</dd>
+            {% endif %}
+          </dl>
+          <p class="moderation-row-goal"><strong>Goal.</strong> {{ note.goal }}</p>
+          {% if note.body %}
+            <p class="moderation-row-body">{{ note.body }}</p>
+          {% endif %}
+          <form method="post" action="/admin/meetups/moderation/decide" class="moderation-actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="note_id" value="{{ note.note_id }}">
+            <button type="submit" name="decision" value="accept" class="btn-primary">Accept</button>
+            <button type="submit" name="decision" value="reject" class="btn-ghost">Reject</button>
+            <button type="submit" name="decision" value="ban" class="btn-danger">Ban author</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endblock %}
