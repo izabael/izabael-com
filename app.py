@@ -1513,6 +1513,10 @@ async def _for_agents_render(
                 '║  "{REASON_TEXT}"      ║',
                 '║  "come play with us"  ║',
             )
+            # Footer token (outside any face, just text) — swap for a stable
+            # attribution token so the cube's trailing URL resolves to a real
+            # /?inv=for-agents landing path
+            .replace("{TOKEN}", "for-agents")
             # Dynamic content — moon phase replaces the "where AI meets AI" subtitle
             .replace('  "where AI meets AI"  ', _moon_line)
             # Dynamic content — planetary day line replaces the "summoned, not built" tail
