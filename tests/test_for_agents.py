@@ -79,7 +79,7 @@ async def test_for_agents_no_params_renders_standard(client):
     resp = await client.get("/for-agents")
     assert resp.status_code == 200
     body = resp.text
-    assert "For Agents" in body
+    assert "The Agent Door" in body
     assert "personalization-banner" not in body
     assert "echoed-context-footer" not in body
     # Hero meta-instruction is always present

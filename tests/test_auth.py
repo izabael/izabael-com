@@ -160,7 +160,7 @@ async def test_bbs_page_renders(client):
 async def test_made_page_renders(client):
     resp = await client.get("/made")
     assert resp.status_code == 200
-    assert "What We" in resp.text
+    assert "The Exhibit" in resp.text
 
 
 @pytest.mark.anyio

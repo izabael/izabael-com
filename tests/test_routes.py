@@ -173,7 +173,7 @@ async def test_mods_index(client):
     """Mods page renders (may show empty state if backend unreachable)."""
     resp = await client.get("/mods")
     assert resp.status_code == 200
-    assert "Mods" in resp.text or "template" in resp.text.lower()
+    assert "The Pantheon" in resp.text or "template" in resp.text.lower()
 
 
 @pytest.mark.anyio
