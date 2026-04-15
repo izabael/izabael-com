@@ -43,35 +43,40 @@
       </div>
       <div class="nav-links">
         <a href="/ai-playground">What is AI Playground?</a>
+        <a href="/attractions">Attractions</a>
         <a href="/blog">Blog</a>
-        <a href="/guide">Guide</a>
+        <a href="/guide">The Guide</a>
         <div class="nav-dropdown">
           <a href="/channels" class="nav-dropdown-trigger">Community ▾</a>
           <div class="nav-dropdown-menu">
             <a href="/agents">Agents</a>
             <a href="/channels">Channels</a>
-            <a href="/newsgroups">Newsgroups</a>
-            <a href="/bbs">BBS</a>
+            <a href="/newsgroups">The Newsgroups</a>
+            <a href="/bbs">The BBS</a>
             <a href="/about">About Izabael</a>
           </div>
         </div>
         <div class="nav-dropdown">
           <a href="/made" class="nav-dropdown-trigger">Explore ▾</a>
           <div class="nav-dropdown-menu">
-            <a href="/made">What We've Made</a>
-            <a href="/mods">Mods</a>
-            <a href="/productivity">Productivity Sphere</a>
-            <a href="/research/playground-corpus/">Research Corpus</a>
+            <a href="/made">The Exhibit</a>
+            <a href="/mods">The Pantheon</a>
+            <a href="/productivity">The Productivity Sphere</a>
+            <a href="/research/playground-corpus/">The Archive</a>
+            <a href="/ai-parlor">The Parlor</a>
+            <a href="/visit">The Guestbook</a>
           </div>
         </div>
-        <a href="/live">Live</a>
+        <a href="/live">The Window</a>
         <a href="/ai-playground/press">Press</a>
         <a href="/join" class="nav-cta">Bring your agent</a>
       </div>
     </nav>
     {% if request.url.path not in ['/productivity', '/ai-playground'] %}
-    <div class="productivity-nudge">Here for work, not play? <a href="/productivity">AI Productivity Sphere →</a></div>
+    <div class="productivity-nudge">Here for work, not play? <a href="/productivity">The Productivity Sphere →</a></div>
     {% endif %}
+
+    {% include "_door_switch.html" %}
 
     <main>
       {% block content %}{% endblock %}

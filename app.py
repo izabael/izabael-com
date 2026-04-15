@@ -62,6 +62,14 @@ from parlor import (
     get_moods as parlor_moods,
     get_page_context as parlor_page_context,
 )
+from attractions import (
+    ATTRACTIONS,
+    DOOR_LABELS,
+    DOOR_LINKS,
+    attraction_for_path,
+    live_attractions,
+    sitemap_entries as attraction_sitemap_entries,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -268,10 +276,24 @@ templates.env.filters["safe_css_color"] = _safe_css_color_filter
 
 
 async def _ctx(request: Request, extra: dict | None = None) -> dict:
-    """Build template context with user and CSRF token injected."""
+    """Build template context with user + CSRF + auto-resolved attraction.
+
+    Every attraction page gets a `door_switch` pill rendered via
+    `_door_switch.html` in base.html. We resolve the attraction here so
+    no route needs to remember to pass it manually — the lookup runs on
+    `request.url.path` and falls through cleanly on non-attraction pages.
+    """
     user = await get_current_user(request)
     csrf_token = _generate_csrf(request)
-    ctx = {"request": request, "user": user, "csrf_token": csrf_token}
+    ctx: dict = {"request": request, "user": user, "csrf_token": csrf_token}
+    attraction = attraction_for_path(request.url.path)
+    if attraction:
+        door = attraction.get("door", "both")
+        link_url, link_label = DOOR_LINKS.get(door, DOOR_LINKS["both"])
+        ctx["attraction"] = attraction
+        ctx["door_here_label"] = DOOR_LABELS.get(door, DOOR_LABELS["both"])
+        ctx["door_link_url"] = link_url
+        ctx["door_link_label"] = link_label
     if extra:
         ctx.update(extra)
     return ctx
@@ -309,8 +331,37 @@ async def about(request: Request):
 
 @app.get("/productivity", response_class=HTMLResponse)
 async def productivity(request: Request):
-    ctx = await _ctx(request, {"title": "AI Productivity Sphere — SILT"})
+    ctx = await _ctx(request, {"title": "The Productivity Sphere — Izabael's AI Playground"})
     return templates.TemplateResponse(request, "productivity.html", ctx)
+
+
+@app.get("/attractions", response_class=HTMLResponse)
+async def attractions_index(request: Request):
+    """Index of every attraction on the playground.
+
+    Single source of truth lives in `attractions.ATTRACTIONS`. The page
+    lists live attractions grouped by door, each with a stubbed meetup
+    count badge (meetup_count is always 0 in Phase 1; the real count
+    lands in Phase 5 of the attractions-and-meetups plan).
+    """
+    listing = [
+        {**a, "meetup_count": 0}
+        for a in live_attractions()
+        if a["slug"] != "playground"  # home isn't shown on its own index
+    ]
+    ctx = await _ctx(request, {
+        "title": "Attractions — Izabael's AI Playground",
+        "attractions_list": listing,
+    })
+    return templates.TemplateResponse(request, "attractions.html", ctx)
+
+
+@app.get("/research")
+async def research_root_redirect():
+    """/research root currently has no landing page — redirect to the
+    corpus landing so the URL isn't a dead end. Keeps external citations
+    to /research/playground-corpus/ intact."""
+    return RedirectResponse(url="/research/playground-corpus/", status_code=307)
 
 
 @app.get("/ai-playground", response_class=HTMLResponse)
@@ -334,7 +385,7 @@ async def live_dashboard(request: Request):
     online = [a for a in agents if a.get("status") == "online"]
     peers = await list_peers()
     ctx = await _ctx(request, {
-        "title": "Live — Izabael's AI Playground",
+        "title": "The Window — Izabael's AI Playground",
         "agents": agents,
         "agent_count": len(agents),
         "online_count": len(online),
@@ -634,7 +685,7 @@ async def ai_parlor_page(request: Request):
     """
     parlor_ctx = await parlor_page_context()
     ctx = await _ctx(request, {
-        "title": "The AI Parlor — Izabael's AI Playground",
+        "title": "The Parlor — Izabael's AI Playground",
         "channels": CHANNELS,
         **parlor_ctx,
     })
@@ -645,7 +696,7 @@ async def ai_parlor_page(request: Request):
 async def noobs_page(request: Request):
     """Guided onboarding for new players — RPG class picker, familiar, quests."""
     ctx = await _ctx(request, {
-        "title": "New Here? — Izabael's AI Playground",
+        "title": "Pick a Class — Izabael's AI Playground",
         "rpg_classes": RPG_CLASSES,
         "vibe_classes": VIBE_CLASSES,
     })
@@ -668,7 +719,7 @@ async def mods_index(request: Request):
     starters = [t for t in starters if t.get("archetype") not in rpg_archetypes]
 
     ctx = await _ctx(request, {
-        "title": "Mods — Izabael's AI Playground",
+        "title": "The Pantheon — Izabael's AI Playground",
         "rpg_classes": rpg_classes,
         "rpg_from_backend": bool(local_rpg),
         "starters": starters,
@@ -749,7 +800,7 @@ async def made_index(request: Request, category: str = ""):
     if user:
         user_votes = await get_user_votes(user["id"])
     ctx = await _ctx(request, {
-        "title": "What We've Made — Izabael's AI Playground",
+        "title": "The Exhibit — Izabael's AI Playground",
         "programs": programs,
         "categories": CATEGORIES,
         "active_category": category,
@@ -969,7 +1020,7 @@ async def bbs_page(request: Request):
     user = await get_current_user(request)
     has_token = bool(user and user.get("agent_token"))
     ctx = await _ctx(request, {
-        "title": "Netzach BBS — Izabael's AI Playground",
+        "title": "The BBS — Izabael's AI Playground",
         "playground_url": "https://izabael.com",
         "has_agent_token": has_token,
     })
@@ -1322,7 +1373,7 @@ async def _for_agents_render(
 
     # HTML variant
     ctx = await _ctx(request, {
-        "title": "For Agents — Izabael's AI Playground",
+        "title": "The Agent Door — Izabael's AI Playground",
         "data": FOR_AGENTS_DATA,
         "live": live,
         "agent_count": live["agent_count"],
@@ -1771,7 +1822,7 @@ async def newsgroups_index(request: Request):
             hierarchy[top] = []
         hierarchy[top].append(g)
     ctx = await _ctx(request, {
-        "title": "Newsgroups — Izabael's AI Playground",
+        "title": "The Newsgroups — Izabael's AI Playground",
         "groups": groups,
         "hierarchy": hierarchy,
     })
@@ -2264,7 +2315,7 @@ async def visit_page(request: Request):
     """Guest landing page — zero friction, no sign-up."""
     hero_img = FRONTEND_DIR / "static" / "img" / "visit-hero.png"
     ctx = await _ctx(request, {
-        "title": "Say hello — Izabael's AI Playground",
+        "title": "The Guestbook — Izabael's AI Playground",
         "hero_img_exists": hero_img.exists(),
     })
     return templates.TemplateResponse(request, "visit.html", ctx)
@@ -2339,7 +2390,7 @@ async def corpus_landing(request: Request):
         reverse=True,
     ) if full_dir.exists() else []
     ctx = await _ctx(request, {
-        "title": "Cross-Frontier Research Corpus — Izabael's AI Playground",
+        "title": "The Archive — Izabael's AI Playground",
         "index": index,
         "stats": index.get("latest_stats") or {},
         "daily_snapshots": daily_snapshots,
@@ -2359,7 +2410,7 @@ async def corpus_methodology(request: Request):
     from content_loader import _render_markdown
     html_body = _render_markdown(post.content)
     ctx = await _ctx(request, {
-        "title": "Methodology — Cross-Frontier Research Corpus",
+        "title": "Methodology — The Archive",
         "page_title": post.get("title", "Corpus Methodology"),
         "authors": post.get("authors") or [],
         "paper_date": post.get("date"),
@@ -2449,26 +2500,23 @@ async def robots_txt():
 @app.get("/sitemap.xml")
 async def sitemap():
     site = "https://izabael.com"
-    urls = [
-        (f"{site}/", "weekly", "1.0"),
+    urls: list[tuple[str, str, str]] = []
+    # Attraction surfaces — source of truth is attractions.ATTRACTIONS
+    # (driven by `attraction_sitemap_entries`). This includes /, /ai-parlor,
+    # /visit, /live, and every other live attraction, so adding a new
+    # attraction automatically updates the sitemap.
+    for url, freq, priority in attraction_sitemap_entries():
+        urls.append((f"{site}{url}", freq, priority))
+    # Non-attraction canonical pages
+    urls.extend([
         (f"{site}/about", "monthly", "0.8"),
         (f"{site}/blog", "weekly", "0.9"),
-        (f"{site}/guide", "weekly", "0.9"),
-        (f"{site}/agents", "daily", "0.8"),
-        (f"{site}/channels", "daily", "0.9"),
-        (f"{site}/mods", "weekly", "0.8"),
-        (f"{site}/noobs", "weekly", "0.8"),
+        (f"{site}/attractions", "weekly", "0.8"),
         (f"{site}/join", "monthly", "0.7"),
-        (f"{site}/bbs", "daily", "0.8"),
-        (f"{site}/made", "daily", "0.9"),
-        (f"{site}/for-agents", "weekly", "0.8"),
-        (f"{site}/newsgroups", "daily", "0.8"),
-        (f"{site}/productivity", "weekly", "0.9"),
-        (f"{site}/research/playground-corpus/", "daily", "0.9"),
         (f"{site}/research/playground-corpus/methodology", "weekly", "0.8"),
         (f"{site}/login", "monthly", "0.3"),
         (f"{site}/register", "monthly", "0.3"),
-    ]
+    ])
     for post in content_store.blog:
         urls.append((f"{site}/blog/{post.slug}", "monthly", "0.7"))
     for chapter in content_store.guide:
