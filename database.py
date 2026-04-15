@@ -192,6 +192,82 @@ CREATE TABLE IF NOT EXISTS for_agents_state (
     expires_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_state_expires ON for_agents_state(expires_at);
+
+-- ── Karma Garden (plan: ~/.claude/queen/plans/karma-garden.md) ──────
+-- Five Virtues per player, decay-based, milestone-permanent,
+-- Seeds-economy forced generosity. Reveal-first, opt-in — only
+-- players who opted into the Chamber's branch prompt have a row
+-- here. Non-garden players are silently ignored by every karma
+-- function.
+CREATE TABLE IF NOT EXISTS karma_gardens (
+    player_id            TEXT PRIMARY KEY,
+    player_kind          TEXT NOT NULL CHECK(player_kind IN ('human','agent','anon_via_agent')),
+    created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    chamber_run_id       TEXT,
+    archetype_slug       TEXT,
+    breath_current       REAL NOT NULL DEFAULT 0,
+    breath_peak          REAL NOT NULL DEFAULT 0,
+    mirror_current       REAL NOT NULL DEFAULT 0,
+    mirror_peak          REAL NOT NULL DEFAULT 0,
+    weave_current        REAL NOT NULL DEFAULT 0,
+    weave_peak           REAL NOT NULL DEFAULT 0,
+    flame_current        REAL NOT NULL DEFAULT 0,
+    flame_peak           REAL NOT NULL DEFAULT 0,
+    shadow_current       REAL NOT NULL DEFAULT 0,
+    shadow_peak          REAL NOT NULL DEFAULT 0,
+    seeds_current        INTEGER NOT NULL DEFAULT 7,
+    seeds_total_earned   INTEGER NOT NULL DEFAULT 7,
+    last_action_at       TEXT,
+    last_replenish_at    TEXT,
+    private_note         TEXT NOT NULL DEFAULT '',
+    is_public            INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_karma_gardens_public   ON karma_gardens(is_public);
+CREATE INDEX IF NOT EXISTS idx_karma_gardens_last_act ON karma_gardens(last_action_at);
+
+CREATE TABLE IF NOT EXISTS karma_events (
+    event_id             TEXT PRIMARY KEY,
+    player_id            TEXT NOT NULL REFERENCES karma_gardens(player_id) ON DELETE CASCADE,
+    action               TEXT NOT NULL,
+    virtue               TEXT NOT NULL CHECK(virtue IN ('breath','mirror','weave','flame','shadow')),
+    delta                REAL NOT NULL,
+    occurred_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    source_ref           TEXT NOT NULL DEFAULT '',
+    details_json         TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_karma_events_player   ON karma_events(player_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_karma_events_virtue   ON karma_events(virtue);
+CREATE INDEX IF NOT EXISTS idx_karma_events_action   ON karma_events(action);
+
+CREATE TABLE IF NOT EXISTS karma_milestones (
+    milestone_id         TEXT PRIMARY KEY,
+    player_id            TEXT NOT NULL REFERENCES karma_gardens(player_id) ON DELETE CASCADE,
+    virtue               TEXT NOT NULL CHECK(virtue IN ('breath','mirror','weave','flame','shadow')),
+    threshold            REAL NOT NULL,
+    name                 TEXT NOT NULL,
+    artifact             TEXT NOT NULL,
+    crossed_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    UNIQUE(player_id, virtue, threshold)
+);
+CREATE INDEX IF NOT EXISTS idx_karma_ms_player   ON karma_milestones(player_id, crossed_at);
+CREATE INDEX IF NOT EXISTS idx_karma_ms_virtue   ON karma_milestones(virtue);
+
+CREATE TABLE IF NOT EXISTS karma_seeds (
+    seed_id              TEXT PRIMARY KEY,
+    from_player          TEXT NOT NULL,
+    to_player            TEXT NOT NULL,
+    virtue               TEXT NOT NULL CHECK(virtue IN ('breath','mirror','weave','flame','shadow')),
+    delta                REAL NOT NULL,
+    target_post_id       TEXT,
+    note                 TEXT NOT NULL DEFAULT '',
+    spent_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    acknowledged_at      TEXT,
+    CHECK (from_player <> to_player)
+);
+CREATE INDEX IF NOT EXISTS idx_karma_seeds_from ON karma_seeds(from_player, spent_at);
+CREATE INDEX IF NOT EXISTS idx_karma_seeds_to   ON karma_seeds(to_player, spent_at);
+
+-- ── Meetup notes (plan: attractions-and-meetups Phase 2) ─────────────
 CREATE TABLE IF NOT EXISTS meetup_notes (
     note_id          TEXT PRIMARY KEY,
     attraction_slug  TEXT NOT NULL,
@@ -1943,6 +2019,158 @@ def _template_row(row) -> dict:
     }
 
 
+# ═══════════════════════════════════════════════════════════════════
+# Karma Garden — data layer
+# Plan: ~/.claude/queen/plans/karma-garden.md
+# Config: karma_weights.py (all tunable constants live there)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class KarmaError(Exception):
+    """Raised by karma functions on invariant violations that shouldn't
+    be swallowed as HTTP errors — self-sponsorship attempts, unknown
+    virtues, missing gardens. The router layer maps these to 400/404."""
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        # SQLite stores with varying microsecond precision + optional tz.
+        v = value.rstrip("Z")
+        return datetime.fromisoformat(v).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _garden_row_to_dict(row) -> dict:
+    """Expand a karma_gardens row into the canonical public shape with
+    virtues nested for template-friendly access."""
+    if row is None:
+        return {}
+    from karma_weights import VIRTUES
+    virtues = {
+        v: {"current": row[f"{v}_current"], "peak": row[f"{v}_peak"]}
+        for v in VIRTUES
+    }
+    return {
+        "player_id": row["player_id"],
+        "player_kind": row["player_kind"],
+        "created_at": row["created_at"],
+        "chamber_run_id": row["chamber_run_id"],
+        "archetype_slug": row["archetype_slug"],
+        "virtues": virtues,
+        "seeds_current": row["seeds_current"],
+        "seeds_total_earned": row["seeds_total_earned"],
+        "last_action_at": row["last_action_at"],
+        "last_replenish_at": row["last_replenish_at"],
+        "private_note": row["private_note"],
+        "is_public": bool(row["is_public"]),
+    }
+
+
+async def plant_garden(
+    player_id: str,
+    *,
+    player_kind: str = "human",
+    archetype_slug: str | None = None,
+    chamber_run_id: str | None = None,
+) -> dict:
+    """Create a new karma_gardens row for a player who opted into the
+    Chamber branch prompt. Seeds the five virtues from the archetype
+    (falling back to a balanced default), grants the starting Seeds
+    count, and returns the full garden dict.
+
+    Idempotent at the caller level: if a garden already exists for
+    ``player_id``, the existing row is returned untouched (no reseeding,
+    no clobbering of in-progress practice).
+    """
+    assert _db is not None
+    from karma_weights import (
+        seed_values_for_archetype, SEEDS_STARTING, VIRTUES,
+    )
+
+    existing = await get_garden(player_id)
+    if existing:
+        return existing
+
+    seeds_map = seed_values_for_archetype(archetype_slug)
+    now = _now_iso()
+    virtue_cols: list[str] = []
+    virtue_vals: list[float] = []
+    for v in VIRTUES:
+        starting = float(seeds_map.get(v, 0.0))
+        virtue_cols.extend([f"{v}_current", f"{v}_peak"])
+        virtue_vals.extend([starting, starting])
+
+    base_cols = [
+        "player_id", "player_kind", "created_at",
+        "chamber_run_id", "archetype_slug",
+        "seeds_current", "seeds_total_earned",
+        "last_action_at", "last_replenish_at",
+        "private_note", "is_public",
+    ]
+    base_vals = [
+        player_id, player_kind, now,
+        chamber_run_id, archetype_slug,
+        SEEDS_STARTING, SEEDS_STARTING,
+        now, now,
+        "", 0,
+    ]
+    cols = base_cols + virtue_cols
+    vals = base_vals + virtue_vals
+    placeholders = ",".join(["?"] * len(cols))
+    await _db.execute(
+        f"INSERT INTO karma_gardens ({','.join(cols)}) VALUES ({placeholders})",
+        vals,
+    )
+    await _db.commit()
+    return await get_garden(player_id) or {}
+
+
+async def get_garden(player_id: str) -> dict | None:
+    """Return a single garden as a dict, or None if no row exists.
+
+    The returned dict includes the full ``virtues`` map but NOT the
+    milestone log or event stream — use ``list_milestones`` /
+    ``list_karma_events`` for those, scoped per caller.
+    """
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT * FROM karma_gardens WHERE player_id = ?",
+        (player_id,),
+    )
+    row = await cursor.fetchone()
+    return _garden_row_to_dict(row) if row else None
+
+
+async def list_milestones(player_id: str) -> list[dict]:
+    """Return every milestone crossed by this player, newest first."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT milestone_id, virtue, threshold, name, artifact, crossed_at
+           FROM karma_milestones WHERE player_id = ?
+           ORDER BY crossed_at DESC""",
+        (player_id,),
+    )
+    rows = await cursor.fetchall()
+    return [
+        {
+            "milestone_id": r["milestone_id"],
+            "virtue": r["virtue"],
+            "threshold": r["threshold"],
+            "name": r["name"],
+            "artifact": r["artifact"],
+            "crossed_at": r["crossed_at"],
+        }
+        for r in rows
+    ]
+
+
 # ══════════════════════════════════════════════════════════════════
 # Meetup notes — attractions-and-meetups Phase 2
 # ══════════════════════════════════════════════════════════════════
@@ -2248,6 +2476,450 @@ async def list_signups(note_id: str) -> list[dict]:
         }
         for r in rows
     ]
+
+
+async def list_karma_events(player_id: str, limit: int = 50) -> list[dict]:
+    """Recent karma events for a player, newest first."""
+    assert _db is not None
+    cursor = await _db.execute(
+        """SELECT event_id, action, virtue, delta, occurred_at, source_ref, details_json
+           FROM karma_events WHERE player_id = ?
+           ORDER BY occurred_at DESC LIMIT ?""",
+        (player_id, max(1, min(limit, 500))),
+    )
+    rows = await cursor.fetchall()
+    return [
+        {
+            "event_id": r["event_id"],
+            "action": r["action"],
+            "virtue": r["virtue"],
+            "delta": r["delta"],
+            "occurred_at": r["occurred_at"],
+            "source_ref": r["source_ref"],
+            "details": json.loads(r["details_json"] or "{}"),
+        }
+        for r in rows
+    ]
+
+
+async def _apply_virtue_delta(
+    player_id: str,
+    virtue: str,
+    delta: float,
+    *,
+    action: str,
+    source_ref: str = "",
+    details: dict | None = None,
+    now: str | None = None,
+) -> tuple[float, float, list[dict]]:
+    """Core helper: apply one (virtue, delta) pair to one garden row.
+
+    * Increments ``<virtue>_current`` by ``delta``.
+    * Bumps ``<virtue>_peak`` if new current exceeds old peak.
+    * Updates ``last_action_at``.
+    * Inserts a ``karma_events`` row with the action label + delta.
+    * Detects milestone crossings and inserts ``karma_milestones`` rows
+      for any threshold crossed by the delta. Milestones use the
+      UNIQUE (player_id, virtue, threshold) constraint so a re-fire
+      (e.g. decay-then-regain) is a no-op.
+
+    Returns (value_before, value_after, new_milestones).
+
+    Callers (``record_karma_event``, ``spend_seed``) commit AFTER this
+    function returns so the whole event is one transaction.
+    """
+    from karma_weights import VIRTUES, crossings_triggered
+    if virtue not in VIRTUES:
+        raise KarmaError(f"unknown virtue {virtue!r}")
+    assert _db is not None
+    now = now or _now_iso()
+
+    col_cur = f"{virtue}_current"
+    col_peak = f"{virtue}_peak"
+    cursor = await _db.execute(
+        f"SELECT {col_cur} AS cur, {col_peak} AS peak FROM karma_gardens WHERE player_id = ?",
+        (player_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise KarmaError(f"no garden for player {player_id!r}")
+
+    value_before = float(row["cur"])
+    peak_before = float(row["peak"])
+    value_after = value_before + float(delta)
+    peak_after = max(peak_before, value_after)
+
+    await _db.execute(
+        f"""UPDATE karma_gardens
+            SET {col_cur} = ?, {col_peak} = ?, last_action_at = ?
+            WHERE player_id = ?""",
+        (value_after, peak_after, now, player_id),
+    )
+
+    event_id = str(uuid.uuid4())
+    await _db.execute(
+        """INSERT INTO karma_events
+           (event_id, player_id, action, virtue, delta, occurred_at, source_ref, details_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_id, player_id, action, virtue, float(delta),
+            now, source_ref or "", json.dumps(details or {}),
+        ),
+    )
+
+    new_milestones: list[dict] = []
+    for m in crossings_triggered(virtue, value_before, value_after):
+        try:
+            ms_id = str(uuid.uuid4())
+            await _db.execute(
+                """INSERT INTO karma_milestones
+                   (milestone_id, player_id, virtue, threshold, name, artifact, crossed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (ms_id, player_id, virtue, m.threshold, m.name, m.artifact, now),
+            )
+            new_milestones.append({
+                "milestone_id": ms_id,
+                "virtue": virtue,
+                "threshold": m.threshold,
+                "name": m.name,
+                "artifact": m.artifact,
+                "crossed_at": now,
+            })
+        except aiosqlite.IntegrityError:
+            # Already crossed — permanent, don't double-mint. Skip
+            # silently, per the "milestones are permanent + idempotent"
+            # invariant in the plan.
+            pass
+
+    return value_before, value_after, new_milestones
+
+
+async def record_karma_event(
+    player_id: str,
+    action: str,
+    *,
+    source_ref: str = "",
+    details: dict | None = None,
+    overrides: list[tuple[str, float]] | None = None,
+) -> dict:
+    """Record a karma-generating action for a player, looking up weights
+    from ``karma_weights.ACTION_WEIGHTS`` unless ``overrides`` is passed
+    (used by ``spend_seed`` to feed a caller-chosen virtue).
+
+    Silently returns ``{"ok": False, "reason": "no garden"}`` if the
+    player hasn't planted a garden — this is the "opt-in, reveal-first"
+    invariant: events for non-garden players are dropped without error
+    so the action hooks can be wired site-wide without sprinkling
+    ``if has_garden`` checks everywhere.
+
+    Returns a summary dict with the applied deltas and any new
+    milestones crossed.
+    """
+    from karma_weights import ACTION_WEIGHTS
+    assert _db is not None
+
+    garden = await get_garden(player_id)
+    if garden is None:
+        return {"ok": False, "reason": "no-garden", "player_id": player_id}
+
+    pairs = overrides if overrides is not None else ACTION_WEIGHTS.get(action, [])
+    if not pairs:
+        # Unknown actions with no override — log nothing, surface the
+        # lookup miss so callers can fix their action label.
+        return {
+            "ok": False,
+            "reason": "unknown-action",
+            "action": action,
+            "player_id": player_id,
+        }
+
+    now = _now_iso()
+    applied: list[dict] = []
+    milestones: list[dict] = []
+    for virtue, delta in pairs:
+        before, after, new_ms = await _apply_virtue_delta(
+            player_id, virtue, float(delta),
+            action=action,
+            source_ref=source_ref,
+            details=details,
+            now=now,
+        )
+        applied.append({
+            "virtue": virtue,
+            "delta": float(delta),
+            "before": before,
+            "after": after,
+        })
+        milestones.extend(new_ms)
+
+    await _db.commit()
+    return {
+        "ok": True,
+        "player_id": player_id,
+        "action": action,
+        "applied": applied,
+        "milestones": milestones,
+    }
+
+
+async def spend_seed(
+    from_player: str,
+    to_player: str,
+    virtue: str,
+    *,
+    target_post_id: str | None = None,
+    note: str = "",
+    delta: float | None = None,
+) -> dict:
+    """Spend one Seed from ``from_player`` to sponsor ``to_player`` in
+    the given virtue.
+
+    Enforced invariants (any failure raises ``KarmaError``):
+
+      * from_player != to_player (also enforced at the DB CHECK layer)
+      * virtue is one of the five
+      * from_player has a garden AND seeds_current >= 1
+      * to_player has a garden
+
+    On success:
+      * Decrements ``from_player.seeds_current`` by 1
+      * Inserts a ``karma_seeds`` row
+      * Records a karma_event on ``to_player`` in the chosen virtue
+        (which may mint a milestone for the recipient)
+      * Commits as a single transaction
+
+    Returns the new seed_id plus the recipient's event summary.
+    """
+    from karma_weights import VIRTUES, SEED_DELTA_DEFAULT
+    assert _db is not None
+
+    if from_player == to_player:
+        raise KarmaError("cannot sponsor yourself")
+    if virtue not in VIRTUES:
+        raise KarmaError(f"unknown virtue {virtue!r}")
+
+    from_garden = await get_garden(from_player)
+    if from_garden is None:
+        raise KarmaError(f"sponsor {from_player!r} has no garden")
+    if from_garden["seeds_current"] < 1:
+        raise KarmaError(f"sponsor {from_player!r} is out of Seeds")
+
+    to_garden = await get_garden(to_player)
+    if to_garden is None:
+        raise KarmaError(f"recipient {to_player!r} has no garden")
+
+    delta_value = float(delta if delta is not None else SEED_DELTA_DEFAULT)
+    now = _now_iso()
+    seed_id = str(uuid.uuid4())
+
+    # Decrement sponsor's Seed count atomically with the karma_seeds
+    # insert. The ``karma_seeds.CHECK (from_player <> to_player)`` at
+    # the DB layer is a belt-and-braces guard on top of the function
+    # check above — if either fails, the transaction rolls back.
+    await _db.execute(
+        "UPDATE karma_gardens SET seeds_current = seeds_current - 1 WHERE player_id = ?",
+        (from_player,),
+    )
+    await _db.execute(
+        """INSERT INTO karma_seeds
+           (seed_id, from_player, to_player, virtue, delta,
+            target_post_id, note, spent_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            seed_id, from_player, to_player, virtue, delta_value,
+            target_post_id, note or "", now,
+        ),
+    )
+
+    # Credit the recipient via the standard event path so milestone
+    # crossings fire naturally.
+    recipient_event = await record_karma_event(
+        to_player,
+        "seed_sponsorship_received",
+        source_ref=seed_id,
+        details={
+            "sponsor": from_player,
+            "virtue": virtue,
+            "delta": delta_value,
+            "note": note,
+        },
+        overrides=[(virtue, delta_value)],
+    )
+    # record_karma_event already committed its own changes — the seed
+    # UPDATE/INSERT above is committed here too so the whole operation
+    # is one logical transaction from the caller's point of view.
+    await _db.commit()
+
+    return {
+        "seed_id": seed_id,
+        "from_player": from_player,
+        "to_player": to_player,
+        "virtue": virtue,
+        "delta": delta_value,
+        "recipient_event": recipient_event,
+    }
+
+
+def _decayed_current(
+    current: float,
+    peak: float,
+    last_action_at_iso: str | None,
+    now_dt: datetime,
+) -> float:
+    """Pure math for the decay engine — extracted so tests can hit it
+    directly without DB setup.
+
+    Formula (see ``karma_weights`` for constants + rationale):
+
+        weeks_inactive = max(0, (days_since - grace_days) / 7)
+        target         = peak * (decay_rate ** weeks_inactive)
+        floor          = max(floor_min, peak * floor_fraction)
+        new_current    = max(floor, min(current, target))
+
+    Idempotent: result is a pure function of ``(current, peak,
+    last_action_at, now)``. Non-compounding: never multiplies
+    ``current`` by anything; only clamps it against ``target`` and
+    ``floor``. Respects lived history: if ``current`` is already
+    below ``target`` (e.g. the player gained value at a low point
+    during a past decay period), decay is a no-op until further
+    inactivity pulls ``target`` below ``current``.
+    """
+    from karma_weights import (
+        DECAY_RATE, DECAY_GRACE_DAYS, DECAY_FLOOR_FRACTION, DECAY_FLOOR_MIN,
+    )
+    floor = max(DECAY_FLOOR_MIN, peak * DECAY_FLOOR_FRACTION)
+    # An empty garden (peak == 0) can't fall below zero; the floor
+    # formula would give 10.0 but the player has no ground to lose.
+    if peak <= 0.0:
+        return max(current, 0.0)
+
+    last_dt = _parse_iso(last_action_at_iso)
+    if last_dt is None:
+        # No recorded activity — treat as "just planted", no decay.
+        return max(floor, current) if current < floor and current > 0 else current
+
+    days_since = (now_dt - last_dt).total_seconds() / 86400.0
+    if days_since <= DECAY_GRACE_DAYS:
+        return current
+
+    weeks_inactive = (days_since - DECAY_GRACE_DAYS) / 7.0
+    target = peak * (DECAY_RATE ** weeks_inactive)
+    return max(floor, min(current, target))
+
+
+async def run_decay_pass(now: datetime | None = None) -> dict:
+    """Run one decay pass over every garden. Called hourly by the
+    daemon cron. Returns a summary dict with counts + per-virtue
+    totals so the operator can monitor the engine in /admin.
+
+    This pass is idempotent — running it twice in a row produces the
+    same garden state (the second run finds every virtue already at
+    its drift line and makes no further changes). See the non-negotiable
+    invariant in ``karma_weights`` for the math.
+    """
+    from karma_weights import VIRTUES
+    assert _db is not None
+    now_dt = now or datetime.now(timezone.utc)
+
+    cursor = await _db.execute(
+        "SELECT player_id, last_action_at, "
+        + ", ".join([f"{v}_current, {v}_peak" for v in VIRTUES])
+        + " FROM karma_gardens"
+    )
+    rows = await cursor.fetchall()
+
+    touched = 0
+    decayed_points_total = 0.0
+    for row in rows:
+        updates: list[tuple[str, float]] = []
+        for v in VIRTUES:
+            current = float(row[f"{v}_current"])
+            peak = float(row[f"{v}_peak"])
+            new = _decayed_current(current, peak, row["last_action_at"], now_dt)
+            if new != current:
+                updates.append((v, new))
+                decayed_points_total += (current - new)
+        if not updates:
+            continue
+        set_clause = ", ".join([f"{v}_current = ?" for v, _ in updates])
+        params = [val for _, val in updates] + [row["player_id"]]
+        await _db.execute(
+            f"UPDATE karma_gardens SET {set_clause} WHERE player_id = ?",
+            params,
+        )
+        touched += 1
+
+    if touched:
+        await _db.commit()
+
+    return {
+        "gardens_scanned": len(rows),
+        "gardens_decayed": touched,
+        "points_removed": round(decayed_points_total, 4),
+        "ran_at": now_dt.isoformat(),
+    }
+
+
+async def replenish_seeds_pass(now: datetime | None = None) -> dict:
+    """Grant +1 Seed to any garden that's under the cap and whose
+    ``last_replenish_at`` is older than ``SEEDS_REPLENISH_PERIOD_DAYS``.
+
+    Runs daily via the same daemon cron that drives ``run_decay_pass``.
+    Idempotent: a player who logs in daily gets the same total Seeds
+    over a week as a player who logs in hourly, because the period
+    gate uses timestamps, not pass counts.
+    """
+    from karma_weights import (
+        SEEDS_CAP, SEEDS_REPLENISH_PER_PASS, SEEDS_REPLENISH_PERIOD_DAYS,
+    )
+    assert _db is not None
+    now_dt = now or datetime.now(timezone.utc)
+    now_iso = now_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+    cursor = await _db.execute(
+        """SELECT player_id, seeds_current, seeds_total_earned, last_replenish_at
+           FROM karma_gardens
+           WHERE seeds_current < ?""",
+        (SEEDS_CAP,),
+    )
+    rows = await cursor.fetchall()
+
+    granted = 0
+    for row in rows:
+        last_replenish = _parse_iso(row["last_replenish_at"]) or _parse_iso(None)
+        if last_replenish is None:
+            due = True
+        else:
+            days_since = (now_dt - last_replenish).total_seconds() / 86400.0
+            due = days_since >= SEEDS_REPLENISH_PERIOD_DAYS
+        if not due:
+            continue
+
+        new_current = min(
+            int(row["seeds_current"]) + SEEDS_REPLENISH_PER_PASS,
+            SEEDS_CAP,
+        )
+        new_total = int(row["seeds_total_earned"]) + (
+            new_current - int(row["seeds_current"])
+        )
+        await _db.execute(
+            """UPDATE karma_gardens
+               SET seeds_current = ?,
+                   seeds_total_earned = ?,
+                   last_replenish_at = ?
+               WHERE player_id = ?""",
+            (new_current, new_total, now_iso, row["player_id"]),
+        )
+        granted += 1
+
+    if granted:
+        await _db.commit()
+
+    return {
+        "gardens_scanned": len(rows),
+        "seeds_granted": granted,
+        "ran_at": now_dt.isoformat(),
+    }
 
 
 async def delete_meetup_note(note_id: str, author_label: str) -> bool:
