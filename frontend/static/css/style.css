@@ -3524,3 +3524,266 @@ body.chamber-sealed main {
   margin-top: 18px;
   flex-wrap: wrap;
 }
+
+/* ── Meetup pinboard block (Phase 4) ───────────────────────────
+   Reusable bulletin-board pinned to attraction pages. Theme-aware
+   via the existing CSS custom properties — no theme overrides needed,
+   it adopts whatever the active theme has set. Quiet by design. */
+.meetup-block {
+  margin: 32px auto 24px;
+  max-width: 720px;
+  background: var(--bg-card, rgba(20, 17, 31, 0.6));
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 10px;
+  padding: 18px 22px 16px;
+  font-family: var(--sans, "Inter", system-ui, sans-serif);
+  color: var(--text, #e8e2ff);
+  position: relative;
+}
+.meetup-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.meetup-block-header h3 {
+  margin: 0;
+  font-family: var(--serif, "Crimson Pro", Georgia, serif);
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--text, #e8e2ff);
+}
+.meetup-block-glyph {
+  margin-right: 6px;
+  opacity: 0.85;
+}
+.meetup-block-count {
+  font-size: 0.82rem;
+  color: var(--text-faint, #7a6ea0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.meetup-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.meetup-list-empty,
+.meetup-list-loading {
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  color: var(--text-faint, #7a6ea0);
+  font-style: italic;
+  border: 1px dashed var(--border, #2a2440);
+  border-radius: 6px;
+}
+.meetup-list-item {
+  padding: 12px 14px;
+  background: rgba(123, 104, 238, 0.05);
+  border: 1px solid var(--border, #2a2440);
+  border-left: 3px solid var(--accent, #7b68ee);
+  border-radius: 6px;
+}
+.meetup-list-item-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.meetup-list-item-title strong {
+  color: var(--text, #e8e2ff);
+  font-weight: 600;
+}
+.meetup-list-item-title .meetup-when {
+  font-size: 0.85rem;
+  color: var(--text-dim, #b6a8d6);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.meetup-list-item-title .meetup-when em {
+  color: var(--text-faint, #7a6ea0);
+  font-style: normal;
+}
+.meetup-list-item-goal {
+  margin: 4px 0 6px;
+  font-size: 0.92rem;
+  color: var(--text-dim, #b6a8d6);
+  line-height: 1.4;
+}
+.meetup-list-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-faint, #7a6ea0);
+}
+.meetup-author {
+  color: var(--text-dim, #b6a8d6);
+  font-weight: 500;
+}
+.meetup-author-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 9999px;
+  background: rgba(123, 104, 238, 0.18);
+  color: var(--accent, #7b68ee);
+  border: 1px solid var(--accent, #7b68ee);
+}
+.meetup-author-badge.anon-via {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-faint, #7a6ea0);
+  border-color: var(--border, #2a2440);
+}
+.meetup-vouching {
+  font-style: italic;
+}
+.meetup-pin-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--accent, #7b68ee);
+  border: 1px solid var(--accent, #7b68ee);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.meetup-pin-btn:hover,
+.meetup-pin-btn:focus-visible {
+  background: var(--accent, #7b68ee);
+  color: var(--bg, #0a0612);
+  outline: none;
+}
+.meetup-form {
+  margin-top: 12px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 8px;
+}
+.meetup-form-intro {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--text-faint, #7a6ea0);
+  font-style: italic;
+}
+.meetup-form-row {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meetup-form-row label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim, #b6a8d6);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.meetup-form-row input {
+  padding: 8px 10px;
+  background: var(--bg, #0a0612);
+  color: var(--text, #e8e2ff);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+.meetup-form-row input:focus {
+  outline: 2px solid var(--accent, #7b68ee);
+  outline-offset: 1px;
+  border-color: var(--accent, #7b68ee);
+}
+.meetup-form-row-split {
+  flex-direction: row;
+  gap: 12px;
+}
+.meetup-form-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meetup-form-col label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim, #b6a8d6);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.meetup-honeypot {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.meetup-form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  align-items: center;
+}
+.meetup-form-cancel {
+  background: transparent;
+  color: var(--text-faint, #7a6ea0);
+  border: none;
+  font-family: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+.meetup-form-cancel:hover {
+  color: var(--text-dim, #b6a8d6);
+}
+.meetup-form-status {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+  color: var(--text-dim, #b6a8d6);
+}
+.meetup-form-status.ok {
+  color: #7fdf99;
+}
+.meetup-form-status.error {
+  color: #ff8a8a;
+}
+.meetup-form-status.pending {
+  color: var(--accent, #7b68ee);
+}
+.meetup-block-footer {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  text-align: right;
+}
+.meetup-block-allfeed {
+  color: var(--text-faint, #7a6ea0);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.meetup-block-allfeed:hover {
+  color: var(--accent, #7b68ee);
+}
+
+@media (max-width: 540px) {
+  .meetup-form-row-split {
+    flex-direction: column;
+  }
+  .meetup-block-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

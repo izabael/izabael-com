@@ -1,0 +1,110 @@
+{#
+  Meetup pinboard partial — drop into any attraction page with:
+
+      {% set meetup_slug = "parlor" %}
+      {% set meetup_name = "The Parlor" %}
+      {% include "_meetup_block.html" %}
+
+  meetup_slug MUST match a live attraction in attractions.py — it is
+  the trust boundary the API enforces. If meetup_slug is unset or empty
+  the partial renders nothing (no broken UI, no JS bootstrap).
+
+  Quiet by design (Hive Queen Bible Lesson 22 / plan note): this is a
+  bulletin board pinned to the corner, not a CTA. Players notice it on
+  their second visit, not their first.
+#}
+{% if meetup_slug %}
+<section class="meetup-block"
+         data-attraction="{{ meetup_slug }}"
+         data-name="{{ meetup_name or meetup_slug }}"
+         aria-labelledby="meetup-block-h-{{ meetup_slug }}">
+  <header class="meetup-block-header">
+    <h3 id="meetup-block-h-{{ meetup_slug }}">
+      <span class="meetup-block-glyph" aria-hidden="true">📌</span>
+      Meetups for {{ meetup_name or "this attraction" }}
+    </h3>
+    <span class="meetup-block-count" data-count>—</span>
+  </header>
+
+  <ul class="meetup-list" data-list aria-live="polite">
+    <li class="meetup-list-empty" data-empty hidden>
+      Nothing pinned yet — be the first to leave a note.
+    </li>
+    <li class="meetup-list-loading" data-loading>Loading meetups…</li>
+  </ul>
+
+  <button type="button" class="meetup-pin-btn" data-open-form>
+    Pin a meetup note
+  </button>
+
+  <form class="meetup-form" data-form hidden novalidate>
+    <p class="meetup-form-intro">
+      A short note — when, what, who's invited. Keep it specific so
+      others know whether to show up.
+    </p>
+
+    <div class="meetup-form-row">
+      <label for="meetup-title-{{ meetup_slug }}">Title</label>
+      <input type="text" id="meetup-title-{{ meetup_slug }}"
+             name="title" required maxlength="200"
+             placeholder="e.g. Sunday parlor riff night">
+    </div>
+
+    <div class="meetup-form-row">
+      <label for="meetup-goal-{{ meetup_slug }}">Goal</label>
+      <input type="text" id="meetup-goal-{{ meetup_slug }}"
+             name="goal" required maxlength="280"
+             placeholder="What you're hoping to do or talk about">
+    </div>
+
+    <div class="meetup-form-row meetup-form-row-split">
+      <div class="meetup-form-col">
+        <label for="meetup-when-text-{{ meetup_slug }}">When (text)</label>
+        <input type="text" id="meetup-when-text-{{ meetup_slug }}"
+               name="when_text" required maxlength="120"
+               placeholder="Sunday 8pm PT">
+      </div>
+      <div class="meetup-form-col">
+        <label for="meetup-when-iso-{{ meetup_slug }}">When (date+time)</label>
+        <input type="datetime-local"
+               id="meetup-when-iso-{{ meetup_slug }}"
+               name="when_iso" required>
+      </div>
+    </div>
+
+    <div class="meetup-form-row">
+      <label for="meetup-author-{{ meetup_slug }}">Your name or handle</label>
+      <input type="text" id="meetup-author-{{ meetup_slug }}"
+             name="author_label" required maxlength="120"
+             placeholder="Marlowe">
+    </div>
+
+    {# Honeypot — display:none so real users never see it. Bots that
+       fill every input get blocked at meetup_spam Layer 3. The label
+       is visually hidden but present so screen readers can recognize
+       and skip the field. #}
+    <div class="meetup-honeypot" aria-hidden="true">
+      <label for="meetup-honeypot-{{ meetup_slug }}">
+        Leave this field empty
+      </label>
+      <input type="text" id="meetup-honeypot-{{ meetup_slug }}"
+             name="honeypot_website" tabindex="-1" autocomplete="off">
+    </div>
+
+    <div class="meetup-form-actions">
+      <button type="submit" class="btn btn-primary meetup-form-submit">
+        Pin note
+      </button>
+      <button type="button" class="meetup-form-cancel" data-close-form>
+        Cancel
+      </button>
+    </div>
+
+    <p class="meetup-form-status" data-form-status role="status" aria-live="polite"></p>
+  </form>
+
+  <footer class="meetup-block-footer">
+    <a href="/meetups" class="meetup-block-allfeed">See every meetup →</a>
+  </footer>
+</section>
+{% endif %}
