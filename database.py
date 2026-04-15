@@ -305,6 +305,34 @@ CREATE TABLE IF NOT EXISTS meetup_signups (
     notified_at     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_signups_note ON meetup_signups(note_id);
+
+-- ── Chamber runs (plan: chamber-game-izabael-com) ─────────────────────
+CREATE TABLE IF NOT EXISTS chamber_runs (
+    run_id               TEXT PRIMARY KEY,
+    frame                TEXT NOT NULL DEFAULT 'weird'
+                         CHECK(frame IN ('weird','productivity')),
+    player_kind          TEXT NOT NULL
+                         CHECK(player_kind IN ('human','agent')),
+    player_label         TEXT NOT NULL DEFAULT '',
+    provider             TEXT NOT NULL DEFAULT '',
+    model                TEXT NOT NULL DEFAULT '',
+    started_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    finished_at          TEXT,
+    moves_json           TEXT NOT NULL DEFAULT '[]',
+    category_totals_json TEXT,
+    weighted_total       REAL,
+    archetype_slug       TEXT,
+    archetype_confidence REAL,
+    ip_hash              TEXT NOT NULL DEFAULT '',
+    share_token          TEXT UNIQUE,
+    is_public            INTEGER NOT NULL DEFAULT 1,
+    source               TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_chamber_started ON chamber_runs(started_at);
+CREATE INDEX IF NOT EXISTS idx_chamber_player_kind ON chamber_runs(player_kind);
+CREATE INDEX IF NOT EXISTS idx_chamber_provider ON chamber_runs(provider);
+CREATE INDEX IF NOT EXISTS idx_chamber_frame_total ON chamber_runs(frame, weighted_total DESC);
+CREATE INDEX IF NOT EXISTS idx_chamber_share_token ON chamber_runs(share_token);
 """
 
 
@@ -1841,6 +1869,297 @@ async def cleanup_for_agents_state() -> int:
     try:
         cursor = await _db.execute(
             "DELETE FROM for_agents_state WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%f', 'now')"
+        )
+        await _db.commit()
+        return cursor.rowcount or 0
+    except Exception:
+        return 0
+
+
+# ── Chamber runs (Phase 3: capability-probe game persistence) ───────
+#
+# Mirrors the privacy-minimal, fire-and-forget shape of for_agents_arrivals:
+# - defense-in-depth: writes are try/except so a game bug never takes
+#   the /chamber page down,
+# - a retention-days cleanup helper (called on a cold path from the
+#   chamber handlers in Phase 4/5),
+# - ip_hash uses a daily-rotating salt so a row provides short-term
+#   abuse throttling but zero long-term identification,
+# - frame ('weird' | 'productivity') is first-class in the schema, not
+#   a flag on 'weird' runs — per the chamber plan's Productivity Variant
+#   addendum. Every query that cares about framing filters on it.
+
+
+# Process-wide salt secret. Stable across restarts if CHAMBER_IP_SALT is
+# set in env (recommended for production). Otherwise a fresh random hex
+# is generated at import time — fine for dev and tests, and any abuse
+# record from before the restart stops being a key anybody can replay.
+_CHAMBER_IP_SALT_SECRET = os.environ.get("CHAMBER_IP_SALT") or secrets.token_hex(16)
+
+# Daily-salt cache: {YYYY-MM-DD: sha256(secret:day)}. Cleared whenever
+# the UTC date rolls over — old salts are unrecoverable, which is the
+# point of the daily rotation.
+_chamber_daily_salt_cache: dict[str, str] = {}
+
+
+def _chamber_daily_salt(*, now: datetime | None = None) -> str:
+    """Return today's IP salt. Rotates on UTC date change.
+
+    Tests monkeypatch the `now` kwarg to force a date roll without
+    waiting for wall-clock midnight.
+    """
+    day = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    cached = _chamber_daily_salt_cache.get(day)
+    if cached is not None:
+        return cached
+    # Rotate: drop every prior day's salt so yesterday's hashes are
+    # unreplayable even by this process.
+    _chamber_daily_salt_cache.clear()
+    salt = hashlib.sha256(
+        f"{_CHAMBER_IP_SALT_SECRET}:{day}".encode("utf-8")
+    ).hexdigest()
+    _chamber_daily_salt_cache[day] = salt
+    return salt
+
+
+def _hash_chamber_ip(ip: str | None, *, now: datetime | None = None) -> str:
+    """Hash a raw IP with today's salt. Returns '' for empty/None input
+    so the column stays non-null without storing a placeholder."""
+    if not ip:
+        return ""
+    salt = _chamber_daily_salt(now=now)
+    return hashlib.sha256(f"{salt}:{ip}".encode("utf-8")).hexdigest()[:32]
+
+
+def _chamber_row_to_dict(row) -> dict:
+    """Shape a chamber_runs row for public consumption. Parses the JSON
+    columns and casts booleans."""
+    if row is None:
+        return {}
+    cats_raw = row["category_totals_json"]
+    return {
+        "run_id": row["run_id"],
+        "frame": row["frame"],
+        "player_kind": row["player_kind"],
+        "player_label": row["player_label"],
+        "provider": row["provider"],
+        "model": row["model"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "moves": json.loads(row["moves_json"] or "[]"),
+        "category_totals": json.loads(cats_raw) if cats_raw else None,
+        "weighted_total": row["weighted_total"],
+        "archetype_slug": row["archetype_slug"],
+        "archetype_confidence": row["archetype_confidence"],
+        "share_token": row["share_token"],
+        "is_public": bool(row["is_public"]),
+        "source": row["source"],
+    }
+
+
+async def create_chamber_run(
+    *,
+    run_id: str,
+    frame: str,
+    player_kind: str,
+    player_label: str = "",
+    provider: str = "",
+    model: str = "",
+    ip: str | None = None,
+    source: str = "",
+    is_public: bool = True,
+) -> str:
+    """Insert a new chamber_runs row and return its share_token.
+
+    Idempotent on run_id — calling twice with the same run_id is a no-op
+    that returns the existing row's share_token, so a distracted client
+    that retries the POST doesn't collide on the primary key.
+
+    Raises ValueError for unknown `frame` or `player_kind` values — the
+    CHECK constraints would catch them at insert time anyway, but raising
+    early gives the handler a clean 400 path.
+    """
+    assert _db is not None
+    if frame not in ("weird", "productivity"):
+        raise ValueError(f"invalid frame: {frame!r}")
+    if player_kind not in ("human", "agent"):
+        raise ValueError(f"invalid player_kind: {player_kind!r}")
+
+    cursor = await _db.execute(
+        "SELECT share_token FROM chamber_runs WHERE run_id = ? LIMIT 1",
+        (run_id,),
+    )
+    existing = await cursor.fetchone()
+    if existing:
+        return existing["share_token"]
+
+    share_token = secrets.token_urlsafe(9)
+    ip_hash = _hash_chamber_ip(ip)
+    await _db.execute(
+        """INSERT INTO chamber_runs
+               (run_id, frame, player_kind, player_label, provider, model,
+                ip_hash, share_token, source, is_public)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            run_id,
+            frame,
+            player_kind,
+            (player_label or "")[:200],
+            (provider or "")[:64],
+            (model or "")[:128],
+            ip_hash,
+            share_token,
+            (source or "")[:64],
+            1 if is_public else 0,
+        ),
+    )
+    await _db.commit()
+    return share_token
+
+
+async def append_chamber_move(run_id: str, move: dict) -> None:
+    """Append a scored move to the run's moves_json array.
+
+    Uses SELECT-then-UPDATE because SQLite JSON array append functions
+    vary by version and this keeps the migration footprint zero.
+    """
+    assert _db is not None
+    cursor = await _db.execute(
+        "SELECT moves_json FROM chamber_runs WHERE run_id = ? LIMIT 1",
+        (run_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise ValueError(f"unknown run_id: {run_id!r}")
+    moves = json.loads(row["moves_json"] or "[]")
+    moves.append(move)
+    await _db.execute(
+        "UPDATE chamber_runs SET moves_json = ? WHERE run_id = ?",
+        (json.dumps(moves), run_id),
+    )
+    await _db.commit()
+
+
+async def finalize_chamber_run(
+    run_id: str,
+    *,
+    category_totals: dict,
+    weighted_total: float,
+    archetype_slug: str | None,
+    archetype_confidence: float,
+) -> bool:
+    """Stamp the finished_at + aggregate columns on a run.
+
+    Returns True if a row was updated, False if `run_id` is unknown.
+    Callers that care about correctness (e.g. the Phase 4 handler)
+    should check the return value before surfacing a share URL.
+    """
+    assert _db is not None
+    cursor = await _db.execute(
+        """UPDATE chamber_runs SET
+               finished_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
+               category_totals_json = ?,
+               weighted_total = ?,
+               archetype_slug = ?,
+               archetype_confidence = ?
+           WHERE run_id = ?""",
+        (
+            json.dumps(category_totals or {}),
+            float(weighted_total),
+            archetype_slug,
+            float(archetype_confidence),
+            run_id,
+        ),
+    )
+    await _db.commit()
+    return (cursor.rowcount or 0) > 0
+
+
+async def get_chamber_run(
+    run_id: str | None = None,
+    *,
+    share_token: str | None = None,
+) -> dict | None:
+    """Fetch a chamber run by run_id OR share_token.
+
+    Exactly one must be non-empty. Returns None if neither is supplied
+    or the lookup misses, so handlers can use this as a 404 gate.
+    """
+    if _db is None:
+        return None
+    if run_id:
+        cursor = await _db.execute(
+            "SELECT * FROM chamber_runs WHERE run_id = ? LIMIT 1",
+            (run_id,),
+        )
+    elif share_token:
+        cursor = await _db.execute(
+            "SELECT * FROM chamber_runs WHERE share_token = ? LIMIT 1",
+            (share_token,),
+        )
+    else:
+        return None
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _chamber_row_to_dict(row)
+
+
+async def list_public_chamber_runs(
+    limit: int = 20,
+    *,
+    player_kind: str | None = None,
+    provider: str | None = None,
+    frame: str | None = None,
+) -> list[dict]:
+    """Paginated public leaderboard feed.
+
+    Returns only rows with `is_public = 1` AND `finished_at IS NOT NULL`,
+    sorted by `weighted_total DESC, started_at DESC`. Filters stack —
+    pass `frame='productivity'` AND `player_kind='agent'` to get the
+    per-provider agent leaderboard for the productivity frame only.
+    """
+    assert _db is not None
+    clauses = ["is_public = 1", "finished_at IS NOT NULL"]
+    params: list = []
+    if player_kind:
+        if player_kind not in ("human", "agent"):
+            raise ValueError(f"invalid player_kind: {player_kind!r}")
+        clauses.append("player_kind = ?")
+        params.append(player_kind)
+    if provider:
+        clauses.append("provider = ?")
+        params.append(provider[:64])
+    if frame:
+        if frame not in ("weird", "productivity"):
+            raise ValueError(f"invalid frame: {frame!r}")
+        clauses.append("frame = ?")
+        params.append(frame)
+
+    sql = (
+        "SELECT * FROM chamber_runs WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY weighted_total DESC, started_at DESC LIMIT ?"
+    )
+    params.append(max(1, min(int(limit), 200)))
+    cursor = await _db.execute(sql, tuple(params))
+    rows = await cursor.fetchall()
+    return [_chamber_row_to_dict(r) for r in rows]
+
+
+async def cleanup_chamber_runs(retention_days: int = 90) -> int:
+    """Delete chamber_runs rows older than retention_days.
+
+    Returns the number of rows deleted. Idempotent. Called on a slow
+    cold path inside the Phase 4/5 handlers so /chamber doesn't need
+    a cron — the page sees enough traffic that the table self-trims.
+    """
+    if _db is None:
+        return 0
+    try:
+        cursor = await _db.execute(
+            "DELETE FROM chamber_runs WHERE started_at < datetime('now', ?)",
+            (f"-{int(retention_days)} days",),
         )
         await _db.commit()
         return cursor.rowcount or 0
