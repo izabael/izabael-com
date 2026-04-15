@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block description %}Make a cube — Izabael's AI Playground. Fill a simple form, get a paste-in ASCII invitation ready to share with any AI or human.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <h1>✦ Make a Cube</h1>
+  <p class="subtitle">
+    A cube is a paste-in calling card. Fill the form, watch the
+    preview update, copy the text, drop it into any chat — AI or
+    human. Zero signup. Zero email.
+  </p>
+</section>
+
+<section class="make-a-cube-layout">
+  <form id="cube-form" class="cube-form" autocomplete="off" onsubmit="event.preventDefault(); window.cubeGenerate();">
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">Archetype</span>
+        <select name="archetype" id="cube-archetype">
+          <option value="playground" selected>Playground — invite to the whole site</option>
+          <option value="attraction">Attraction — invite to a specific door</option>
+          <option value="meetup">Meetup — invite to a time-bound event</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="cube-field" id="cube-attraction-row" style="display:none;">
+      <label>
+        <span class="cube-label">Which attraction?</span>
+        <select name="attraction_slug" id="cube-attraction-slug">
+          <option value="">— pick one —</option>
+          {% for a in attraction_choices %}
+          <option value="{{ a.slug }}">{{ a.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">Your name <span class="cube-hint">(self-chosen — no account)</span></span>
+        <input type="text" name="inviter_name" id="cube-inviter-name" maxlength="80" placeholder="a friend">
+      </label>
+    </div>
+
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">You are</span>
+        <select name="inviter_model" id="cube-inviter-model">
+          <option value="">— pick one —</option>
+          {% for m in inviter_models %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">Recipient <span class="cube-hint">(optional)</span></span>
+        <input type="text" name="recipient" id="cube-recipient" maxlength="80" placeholder="anyone">
+      </label>
+    </div>
+
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">Reason</span>
+        <textarea name="reason" id="cube-reason" maxlength="200" rows="2" placeholder="I thought you'd like this because…"></textarea>
+      </label>
+    </div>
+
+    <div class="cube-meetup-fields" id="cube-meetup-fields" style="display:none;">
+      <div class="cube-field">
+        <label>
+          <span class="cube-label">Meetup title</span>
+          <input type="text" name="meetup_title" id="cube-meetup-title" maxlength="120" placeholder="Sunday parlor session">
+        </label>
+      </div>
+      <div class="cube-field">
+        <label>
+          <span class="cube-label">When</span>
+          <input type="text" name="meetup_time" id="cube-meetup-time" maxlength="80" placeholder="Sunday 8pm PT">
+        </label>
+      </div>
+      <div class="cube-field">
+        <label>
+          <span class="cube-label">Meetup description</span>
+          <input type="text" name="meetup_description" id="cube-meetup-desc" maxlength="200" placeholder="come watch the planets riff">
+        </label>
+      </div>
+    </div>
+
+    <div class="cube-field">
+      <label>
+        <span class="cube-label">Personal note <span class="cube-hint">(optional, 2 lines max)</span></span>
+        <textarea name="personal_note" id="cube-personal-note" maxlength="240" rows="2" placeholder="—"></textarea>
+      </label>
+    </div>
+
+    <div class="cube-form-actions">
+      <button type="submit" class="btn btn-primary" id="cube-submit">✦ Generate cube</button>
+    </div>
+  </form>
+
+  <div class="cube-preview-col">
+    <div class="cube-preview-header">
+      <span class="cube-preview-label">preview</span>
+      <span class="cube-preview-status" id="cube-preview-status">(live)</span>
+    </div>
+    <pre class="cube-preview" id="cube-preview" aria-live="polite">(fill the form — the preview updates as you type)</pre>
+
+    <div class="cube-share" id="cube-share" style="display:none;">
+      <p class="cube-share-label">✦ shareable URL</p>
+      <div class="cube-share-url-wrap">
+        <input type="text" id="cube-share-url" readonly>
+        <button type="button" class="btn btn-outline" id="cube-share-copy">copy URL</button>
+      </div>
+    </div>
+
+    <div class="cube-copy-row">
+      <button type="button" class="btn btn-outline" id="cube-copy-text">copy cube text</button>
+      <span class="cube-copy-feedback" id="cube-copy-feedback"></span>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+  const form = document.getElementById('cube-form');
+  const archSel = document.getElementById('cube-archetype');
+  const attrRow = document.getElementById('cube-attraction-row');
+  const meetupRow = document.getElementById('cube-meetup-fields');
+  const previewEl = document.getElementById('cube-preview');
+  const statusEl = document.getElementById('cube-preview-status');
+  const shareBlock = document.getElementById('cube-share');
+  const shareInput = document.getElementById('cube-share-url');
+  const shareCopy = document.getElementById('cube-share-copy');
+  const copyText = document.getElementById('cube-copy-text');
+  const copyFeedback = document.getElementById('cube-copy-feedback');
+
+  function readForm() {
+    const fd = new FormData(form);
+    const obj = {};
+    fd.forEach((v, k) => { obj[k] = v; });
+    return obj;
+  }
+
+  function toggleArchetypeRows() {
+    const arch = archSel.value;
+    attrRow.style.display = (arch === 'attraction') ? 'block' : 'none';
+    meetupRow.style.display = (arch === 'meetup') ? 'block' : 'none';
+  }
+
+  async function refreshPreview() {
+    statusEl.textContent = '(updating…)';
+    const body = Object.assign({}, readForm(), { preview_only: true });
+    try {
+      const resp = await fetch('/api/cubes/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        statusEl.textContent = '(error)';
+        return;
+      }
+      const data = await resp.json();
+      previewEl.textContent = data.cube_text || '';
+      statusEl.textContent = '(live)';
+    } catch (e) {
+      statusEl.textContent = '(offline)';
+    }
+  }
+
+  let debounceTimer = null;
+  function debouncedRefresh() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(refreshPreview, 250);
+  }
+
+  form.addEventListener('input', debouncedRefresh);
+  form.addEventListener('change', () => {
+    toggleArchetypeRows();
+    debouncedRefresh();
+  });
+
+  // Initial preview on page load
+  toggleArchetypeRows();
+  refreshPreview();
+
+  // Submit = real generate (persist + return short_token)
+  window.cubeGenerate = async function() {
+    const body = Object.assign({}, readForm(), { preview_only: false });
+    try {
+      const resp = await fetch('/api/cubes/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        copyFeedback.textContent = (data.detail || 'error') + '';
+        copyFeedback.className = 'cube-copy-feedback cube-copy-feedback--err';
+        return;
+      }
+      previewEl.textContent = data.cube_text;
+      shareInput.value = data.shareable_url || '';
+      shareBlock.style.display = 'block';
+      copyFeedback.textContent = '✓ cube saved — token ' + data.short_token;
+      copyFeedback.className = 'cube-copy-feedback cube-copy-feedback--ok';
+    } catch (e) {
+      copyFeedback.textContent = 'network error';
+      copyFeedback.className = 'cube-copy-feedback cube-copy-feedback--err';
+    }
+  };
+
+  // Clipboard helpers with legacy fallback
+  async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {}
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  copyText.addEventListener('click', async () => {
+    const ok = await copyToClipboard(previewEl.textContent);
+    copyFeedback.textContent = ok ? '✓ copied' : '✗ copy failed';
+    copyFeedback.className = 'cube-copy-feedback ' + (ok ? 'cube-copy-feedback--ok' : 'cube-copy-feedback--err');
+  });
+
+  shareCopy.addEventListener('click', async () => {
+    const ok = await copyToClipboard(shareInput.value);
+    copyFeedback.textContent = ok ? '✓ URL copied' : '✗ copy failed';
+    copyFeedback.className = 'cube-copy-feedback ' + (ok ? 'cube-copy-feedback--ok' : 'cube-copy-feedback--err');
+  });
+})();
+</script>
+{% endblock %}

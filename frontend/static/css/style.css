@@ -2710,3 +2710,147 @@ select[name="purpose"]:focus {
   font-size: 0.92em;
   line-height: 1.55;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CUBES — /make-a-cube generator + /cubes/{token} view
+   ═══════════════════════════════════════════════════════════════ */
+.make-a-cube-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 32px;
+  padding: 16px 20px 60px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+@media (max-width: 900px) {
+  .make-a-cube-layout { grid-template-columns: 1fr; }
+}
+.cube-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cube-field {
+  display: flex;
+  flex-direction: column;
+}
+.cube-label {
+  display: block;
+  font-size: 0.88em;
+  color: var(--text, #e8e2ff);
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.cube-hint {
+  color: var(--text-faint, #7a6ea0);
+  font-weight: normal;
+  font-size: 0.9em;
+}
+.cube-field input[type="text"],
+.cube-field textarea,
+.cube-field select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-card, #14111f);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 6px;
+  color: var(--text, #e8e2ff);
+  font-family: inherit;
+  font-size: 0.96em;
+}
+.cube-field textarea { resize: vertical; }
+.cube-form-actions {
+  margin-top: 6px;
+}
+.cube-preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cube-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--text-faint, #7a6ea0);
+  font-size: 0.85em;
+  letter-spacing: 0.5px;
+}
+.cube-preview {
+  background: var(--bg-card, #14111f);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-family: "JetBrains Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #e8e2ff;
+  white-space: pre;
+  overflow: auto;
+  max-height: 640px;
+}
+.cube-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cube-copy-feedback {
+  font-size: 0.9em;
+  color: var(--text-faint, #7a6ea0);
+}
+.cube-copy-feedback--ok { color: #9fe2c8; }
+.cube-copy-feedback--err { color: #ffb48c; }
+.cube-share {
+  background: rgba(123, 104, 238, 0.08);
+  border: 1px solid var(--purple, #7b68ee);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.cube-share-label {
+  margin: 0 0 8px;
+  font-size: 0.85em;
+  color: var(--purple-light, #b5a3ff);
+  letter-spacing: 0.5px;
+}
+.cube-share-url-wrap {
+  display: flex;
+  gap: 8px;
+}
+.cube-share-url-wrap input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg, #0a0812);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 5px;
+  color: var(--text, #e8e2ff);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+
+/* Cube view (/cubes/{token}) */
+.cube-view-section {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px 20px 60px;
+}
+.cube-view-block {
+  background: var(--bg-card, #14111f);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-family: "JetBrains Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre;
+  overflow: auto;
+  color: #e8e2ff;
+}
+.cube-view-meta {
+  color: var(--text-faint, #7a6ea0);
+  font-size: 0.92em;
+}
+.cube-view-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}

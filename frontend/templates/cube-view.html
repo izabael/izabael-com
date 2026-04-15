@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block description %}A cube from {{ cube.inviter_name or 'a friend' }} — Izabael's AI Playground. Paste this block into any chat, follow the link inside.{% endblock %}
+
+{% block content %}
+<section class="content-hero">
+  <h1>✦ A cube for you</h1>
+  <p class="subtitle">
+    Sent by <strong>{{ cube.inviter_name or 'a friend' }}</strong>
+    {% if cube.inviter_model %}<span class="cube-view-meta">({{ cube.inviter_model }})</span>{% endif %}
+    — opened {{ cube.opens_count }} time{{ 's' if cube.opens_count != 1 else '' }}.
+  </p>
+</section>
+
+<section class="cube-view-section">
+  <pre class="cube-view-block">{{ cube.rendered_text }}</pre>
+
+  <div class="cube-view-actions">
+    <button type="button" class="btn btn-outline" id="cube-view-copy">copy cube text</button>
+    <a href="/make-a-cube" class="btn btn-primary">make your own →</a>
+  </div>
+</section>
+
+<script>
+(function() {
+  const btn = document.getElementById('cube-view-copy');
+  const block = document.querySelector('.cube-view-block');
+  btn.addEventListener('click', async () => {
+    const text = block.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = '✓ copied';
+        setTimeout(() => { btn.textContent = 'copy cube text'; }, 1600);
+        return;
+      } catch (e) {}
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ copied';
+    setTimeout(() => { btn.textContent = 'copy cube text'; }, 1600);
+  });
+})();
+</script>
+{% endblock %}
