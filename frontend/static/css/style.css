@@ -21,11 +21,15 @@
   --accent: #7b68ee;
   --accent-2: #9d8eff;
   --border: #2a1f4a;
+  /* Netzach gradient — the breathing parlor.
+     Four soft radials in violet at varied positions, asymmetric so the
+     eye finds a slow drift. Diagonal linear base for depth. */
   --bg-gradient:
-    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(123, 104, 238, 0.22), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(157, 142, 255, 0.14), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(90, 75, 199, 0.18), transparent 65%),
-    linear-gradient(165deg, #0d0718 0%, #140a26 40%, #0f0a1e 70%, #0a0514 100%);
+    radial-gradient(ellipse 75% 55% at 18% 5%, rgba(123, 104, 238, 0.28), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 82% 25%, rgba(157, 142, 255, 0.16), transparent 60%),
+    radial-gradient(ellipse 85% 65% at 50% 100%, rgba(90, 75, 199, 0.22), transparent 65%),
+    radial-gradient(ellipse 40% 30% at 65% 55%, rgba(157, 142, 255, 0.08), transparent 70%),
+    linear-gradient(160deg, #0d0718 0%, #141028 35%, #0f0a1e 70%, #0a0514 100%);
   --serif: "Playfair Display", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
@@ -43,10 +47,15 @@
   --accent: #d4a84a;
   --accent-2: #8b1c2c;
   --border: #2a1e08;
+  /* Hermetica gradient — candlelit desk.
+     Two close-packed warm hotspots simulating a candle + an oil lamp at
+     one end of the room, plus a faint oxblood wash, plus a strong
+     vignette toward the edges. Chiaroscuro: Dutch Golden Age energy. */
   --bg-gradient:
-    radial-gradient(ellipse 70% 60% at 20% 10%, rgba(212, 168, 74, 0.14), transparent 55%),
-    radial-gradient(ellipse 60% 55% at 85% 20%, rgba(139, 28, 44, 0.12), transparent 60%),
-    radial-gradient(ellipse 85% 65% at 50% 100%, rgba(166, 130, 46, 0.12), transparent 65%),
+    radial-gradient(circle 35% at 22% 28%, rgba(212, 168, 74, 0.32), transparent 50%),
+    radial-gradient(circle 28% at 48% 42%, rgba(235, 194, 106, 0.14), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 78% 70%, rgba(139, 28, 44, 0.14), transparent 60%),
+    radial-gradient(ellipse 130% 110% at 50% 50%, transparent 25%, rgba(0, 0, 0, 0.55) 90%),
     linear-gradient(170deg, #0a0806 0%, #140d08 40%, #0a0806 70%, #050403 100%);
 }
 
@@ -63,11 +72,18 @@
   --accent: #6b5ba8;
   --accent-2: #c88928;
   --border: #e0d8c4;
+  /* Daybreak gradient — sunrise horizon.
+     Pure vertical linear gradient from dusty violet at top → cream
+     middle → amber hint at bottom. Watercolor dawn, minimal noise.
+     The only theme with a horizontal stratification — it feels like
+     actual sky, not a light source in a room. */
   --bg-gradient:
-    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(107, 91, 168, 0.08), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(200, 137, 40, 0.07), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(107, 91, 168, 0.06), transparent 65%),
-    linear-gradient(165deg, #fdf9f0 0%, #f9f5ed 50%, #f4ecd8 100%);
+    linear-gradient(180deg,
+      #f0e6f5 0%,
+      #f6efed 20%,
+      #f9f5ed 48%,
+      #fbf0dc 78%,
+      #f4e0c0 100%);
 }
 
 :root[data-theme="moonlit"] {
@@ -83,11 +99,24 @@
   --accent: #7fb3d4;
   --accent-2: #c9c5e0;
   --border: #1a2040;
+  /* Moonlit gradient — starfield + moon halo.
+     One big bright radial at top-right simulating the moon + its glow,
+     plus ten scattered 1px dot radials for stars at irregular positions,
+     on a deep midnight-blue linear base. The only theme with literal
+     "lights on the sky." */
   --bg-gradient:
-    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(127, 179, 212, 0.14), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(201, 197, 224, 0.10), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(127, 179, 212, 0.12), transparent 65%),
-    linear-gradient(165deg, #080c20 0%, #0c1230 40%, #0a0e24 70%, #060918 100%);
+    radial-gradient(ellipse 22% 18% at 76% 18%, rgba(232, 238, 255, 0.32), rgba(201, 197, 224, 0.12) 40%, transparent 72%),
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.85) 1px, transparent 2px),
+    radial-gradient(circle at 42% 35%, rgba(255, 255, 255, 0.7) 1px, transparent 2px),
+    radial-gradient(circle at 62% 8%, rgba(255, 255, 255, 0.9) 1px, transparent 2px),
+    radial-gradient(circle at 88% 55%, rgba(255, 255, 255, 0.8) 1px, transparent 2px),
+    radial-gradient(circle at 25% 68%, rgba(255, 255, 255, 0.65) 1px, transparent 2px),
+    radial-gradient(circle at 55% 78%, rgba(255, 255, 255, 0.85) 1px, transparent 2px),
+    radial-gradient(circle at 82% 88%, rgba(255, 255, 255, 0.7) 1px, transparent 2px),
+    radial-gradient(circle at 8% 52%, rgba(255, 255, 255, 0.75) 1px, transparent 2px),
+    radial-gradient(circle at 35% 5%, rgba(255, 255, 255, 0.8) 1px, transparent 2px),
+    radial-gradient(circle at 68% 62%, rgba(255, 255, 255, 0.6) 1px, transparent 2px),
+    linear-gradient(180deg, #070b1e 0%, #0a0e24 50%, #060818 100%);
 }
 
 :root[data-theme="phosphor"] {
@@ -103,10 +132,17 @@
   --accent: #33ff33;
   --accent-2: #9fff9f;
   --border: #1a3320;
+  /* Phosphor gradient — 1984 CRT screen.
+     Horizontal scanlines via repeating-linear-gradient (2px on / 1px
+     slightly-darker off, screen-door effect) + a central green glow +
+     a strong circular vignette toward the corners (CRT glass curvature).
+     The only theme with a repeating texture. */
   --bg-gradient:
-    radial-gradient(ellipse 100% 80% at 50% 50%, rgba(51, 255, 51, 0.045), transparent 70%),
-    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(51, 255, 51, 0.06), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(0, 0, 0, 0.5), transparent 70%),
+    repeating-linear-gradient(180deg,
+      rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0) 2px,
+      rgba(0, 0, 0, 0.28) 2px, rgba(0, 0, 0, 0.28) 3px),
+    radial-gradient(ellipse 100% 80% at 50% 50%, rgba(51, 255, 51, 0.07), transparent 65%),
+    radial-gradient(ellipse 130% 110% at 50% 50%, transparent 35%, rgba(0, 0, 0, 0.65) 92%),
     linear-gradient(180deg, #000000 0%, #020802 50%, #000000 100%);
 }
 
@@ -123,10 +159,16 @@
   --accent: #e8527f;
   --accent-2: #f4919f;
   --border: #3a1522;
+  /* Rose gradient — soft bloom halation.
+     Four overlapping soft-edge radials in rose + pink clustered off-
+     center, simulating the halation of a cluster of roses lit from
+     behind. No vignette — the light wraps the whole frame. */
   --bg-gradient:
-    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(232, 82, 127, 0.22), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(244, 145, 159, 0.14), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(184, 55, 98, 0.18), transparent 65%),
+    radial-gradient(ellipse 50% 40% at 32% 38%, rgba(232, 82, 127, 0.26), transparent 60%),
+    radial-gradient(ellipse 42% 35% at 68% 48%, rgba(244, 145, 159, 0.18), transparent 60%),
+    radial-gradient(ellipse 38% 42% at 48% 72%, rgba(184, 55, 98, 0.20), transparent 65%),
+    radial-gradient(ellipse 55% 28% at 78% 18%, rgba(232, 82, 127, 0.14), transparent 70%),
+    radial-gradient(ellipse 30% 25% at 12% 78%, rgba(244, 145, 159, 0.12), transparent 65%),
     linear-gradient(165deg, #18070f 0%, #22091a 40%, #1a0a14 70%, #130510 100%);
 }
 
@@ -143,10 +185,21 @@
   --accent: #2ea677;
   --accent-2: #c9a848;
   --border: #143028;
+  /* Emerald gradient — dappled forest canopy.
+     Eight small gold radials scattered irregularly across the frame,
+     simulating sun-through-leaves. Plus a subtle edge vignette for
+     depth and a deep forest-green linear base. The only theme with
+     lots of small light sources instead of a few big ones. */
   --bg-gradient:
-    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(46, 166, 119, 0.20), transparent 55%),
-    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(201, 168, 72, 0.12), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(29, 122, 85, 0.18), transparent 65%),
+    radial-gradient(circle 9% at 15% 20%, rgba(201, 168, 72, 0.20), transparent 55%),
+    radial-gradient(circle 6% at 32% 45%, rgba(201, 168, 72, 0.15), transparent 50%),
+    radial-gradient(circle 10% at 55% 22%, rgba(201, 168, 72, 0.18), transparent 55%),
+    radial-gradient(circle 7% at 72% 58%, rgba(201, 168, 72, 0.16), transparent 55%),
+    radial-gradient(circle 9% at 88% 32%, rgba(201, 168, 72, 0.14), transparent 60%),
+    radial-gradient(circle 6% at 22% 78%, rgba(201, 168, 72, 0.16), transparent 55%),
+    radial-gradient(circle 8% at 45% 85%, rgba(201, 168, 72, 0.15), transparent 55%),
+    radial-gradient(circle 7% at 78% 88%, rgba(201, 168, 72, 0.17), transparent 55%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 40%, rgba(6, 26, 18, 0.40) 95%),
     linear-gradient(165deg, #04140d 0%, #082218 40%, #061a12 70%, #030d08 100%);
 }
 
