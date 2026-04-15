@@ -929,6 +929,78 @@ async def admin_dashboard(request: Request):
     return templates.TemplateResponse(request, "admin.html", ctx)
 
 
+@app.get("/admin/meetups/moderation", response_class=HTMLResponse)
+async def admin_meetups_moderation(request: Request):
+    """Admin queue for flagged + unverified meetup notes. The three
+    decision buttons (accept / reject / ban author) post to the
+    companion route below."""
+    user = await get_current_user(request)
+    if not is_admin(user):
+        return RedirectResponse(
+            "/login?next=/admin/meetups/moderation",
+            status_code=302,
+        )
+    from database import list_meetup_notes_for_moderation
+    queue = await list_meetup_notes_for_moderation(limit=100)
+    ctx = await _ctx(request, {
+        "title": "Meetup moderation — Izabael's AI Playground",
+        "queue": queue,
+    })
+    return templates.TemplateResponse(
+        request, "admin_meetups_moderation.html", ctx,
+    )
+
+
+@app.post("/admin/meetups/moderation/decide")
+async def admin_meetups_moderation_decide(
+    request: Request,
+    note_id: str = Form(...),
+    decision: str = Form(...),
+    csrf_token: str = Form(default=""),
+):
+    """Apply an accept / reject / ban-author decision to one queued
+    note. Admin-only, CSRF-protected. Redirects back to the queue so
+    the page re-renders without the just-decided row."""
+    user = await get_current_user(request)
+    if not is_admin(user):
+        raise HTTPException(403, "admin only")
+    if not _verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Invalid form submission")
+    if decision not in ("accept", "reject", "ban"):
+        raise HTTPException(400, "unknown decision")
+
+    from database import (
+        ban_meetup_author,
+        get_meetup_note,
+        update_meetup_note_verdict,
+    )
+
+    note = await get_meetup_note(note_id)
+    if note is None:
+        raise HTTPException(404, "note not found")
+
+    if decision == "accept":
+        await update_meetup_note_verdict(
+            note_id, verdict="clean", is_visible=True,
+        )
+    elif decision == "reject":
+        await update_meetup_note_verdict(
+            note_id, verdict="rejected", is_visible=False,
+        )
+    elif decision == "ban":
+        await ban_meetup_author(
+            agent_name=note.get("author_agent") or None,
+            ip_hash=None,  # note rows don't expose the hash
+            reason="moderation: rejected + banned",
+            banned_by=user.get("username", "admin"),
+        )
+        await update_meetup_note_verdict(
+            note_id, verdict="rejected", is_visible=False,
+        )
+
+    return RedirectResponse("/admin/meetups/moderation", status_code=303)
+
+
 # ── Auth Routes ──────────────────────────────────────────────────────
 
 @app.get("/login", response_class=HTMLResponse)

@@ -30,6 +30,28 @@ async def _init_test_db(tmp_path):
     await close_db()
 
 
+@pytest.fixture(autouse=True)
+def _mock_llm_local_classifier(monkeypatch):
+    """Phase 3 Layer 2 calls llm_local.classify_meetup — ollama is not
+    running in test env, so without this mock every note would be
+    classified 'unverified' and land in the moderation queue. Stub
+    with a clean verdict so the Phase 2 happy-path tests keep
+    asserting 'clean'. Spam-specific tests in test_meetup_spam.py
+    override this."""
+    import llm_local
+
+    def _fake_classify_meetup(text, **kwargs):
+        return {
+            "label": "legitimate",
+            "confidence": 0.95,
+            "reasoning": "test-mode mock",
+        }
+
+    monkeypatch.setattr(
+        llm_local, "classify_meetup", _fake_classify_meetup,
+    )
+
+
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
