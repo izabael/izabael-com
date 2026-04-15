@@ -49,8 +49,11 @@ from database import (
     log_for_agents_arrival, cleanup_for_agents_arrivals,
     create_state, get_state, cleanup_for_agents_state,
     get_attraction_meetup_counts,
+    create_chamber_run, append_chamber_move, finalize_chamber_run,
+    get_chamber_run, count_chamber_runs_today_for_ip, _hash_chamber_ip,
 )
 import meetups as _meetups_module
+import chamber
 import database as _database  # passed into for_agents_personalization
 from for_agents_personalization import parse_context as parse_for_agents_context
 from auth import get_current_user, login_session, logout_session, is_admin
@@ -82,6 +85,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 async def lifespan(app: FastAPI):
     await init_db()
     content_store.load()
+    chamber.store.load()
     await _seed_izabael()
     await _seed_visitor_agent()
     from program_catalog import seed_programs
@@ -2505,6 +2509,287 @@ async def visit_say(request: Request, body: _GuestMessage):
         "ok": True,
         "message": f"leaving you a note for Izabael — she'll reply within minutes ✨",
     }
+
+
+# ── The Chamber (Phase 4: human door + game loop) ─────────────────────
+#
+# Thin HTTP layer over chamber.py (Phase 2) and database.chamber_runs
+# (Phase 3). The page is deliberately sealed — the base.html chrome
+# (nav, footer, productivity-nudge) is hidden via the `chamber-sealed`
+# body class so the room feels enclosed when you're inside it.
+#
+# Dual-framing: the same probe set produces different archetypes in
+# the `weird` frame (8 Tarot, default) vs the `productivity` frame
+# (7 planetary). Frame is resolved from (a) explicit ?frame=<name>
+# query param, (b) HTTP Referer containing /productivity, or (c) the
+# default 'weird'. Threaded into chamber_runs.frame at create time,
+# then threaded into chamber.aggregate_run() at finalize time.
+#
+# Rate limit: 5 runs per ip_hash per day. Above that, soft-fail with a
+# friendly 429 that tells the visitor to come back tomorrow. This is
+# enforced server-side via count_chamber_runs_today_for_ip(); slowapi
+# handles the per-minute throttle separately.
+
+
+CHAMBER_DAILY_LIMIT = 5
+_CHAMBER_RATE_MESSAGE = (
+    "the Chamber only accepts five visitors per day from each address — "
+    "come back tomorrow"
+)
+
+
+def _chamber_resolve_frame(request: Request, explicit: str | None = None) -> str:
+    """Pick the active frame for a chamber request.
+
+    Priority: explicit query param > Referer autofill > default 'weird'.
+    Unknown values collapse to 'weird' rather than raising so a bot with
+    a malformed query param can't crash the page."""
+    if explicit and explicit in chamber.FRAMES:
+        return explicit
+    referer = (request.headers.get("referer") or "").lower()
+    if "/productivity" in referer:
+        return "productivity"
+    return "weird"
+
+
+def _chamber_client_ip(request: Request) -> str:
+    """Best-effort client IP for the chamber rate limiter.
+
+    Prefers the leftmost X-Forwarded-For entry (Fly's proxy adds one),
+    falls back to request.client.host. Returns '' when nothing is
+    available — the rate limiter treats empty IP as unlimited so local
+    tests don't hit the 5/day gate by accident."""
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",")[0].strip()
+    if request.client:
+        return request.client.host or ""
+    return ""
+
+
+def _chamber_probe_payload(probe: chamber.Probe, *, index: int, total: int) -> dict:
+    """Shape a Probe object for the JSON wire format.
+
+    The probe's `scoring` and `judge` blocks are intentionally NOT sent
+    to the client — those are server-side secrets. The player sees only
+    the prompt, slug, category, and position."""
+    return {
+        "id": probe.id,
+        "slug": probe.slug,
+        "prompt": probe.prompt,
+        "category": probe.category,
+        "index": index,
+        "total": total,
+    }
+
+
+class _ChamberRunStart(BaseModel):
+    frame: str | None = Field(default=None, max_length=32)
+    player_label: str = Field(default="", max_length=80)
+
+
+class _ChamberMoveBody(BaseModel):
+    probe_id: str = Field(..., max_length=120)
+    response: str = Field(..., max_length=2000)
+
+
+@app.get("/chamber", response_class=HTMLResponse, tags=["chamber"])
+async def chamber_page(request: Request, frame: str | None = None):
+    """Serve the sealed human-facing chamber page.
+
+    The page is a blank slate — no probe content is rendered server-side.
+    The JS at frontend/static/js/chamber.js starts a run via
+    `POST /api/chamber/run` on user confirmation and drives the rest of
+    the loop. Frame is baked into a data attribute so the JS knows which
+    frame to ask for."""
+    resolved = _chamber_resolve_frame(request, frame)
+    probes = chamber.load_probes()
+    ctx = await _ctx(request, {
+        "title": "The Chamber — Izabael's AI Playground",
+        "frame": resolved,
+        "total_probes": len(probes),
+    })
+    return templates.TemplateResponse(request, "chamber.html", ctx)
+
+
+@app.post("/api/chamber/run", tags=["chamber"])
+@limiter.limit("20/minute")
+async def chamber_api_run_start(request: Request, body: _ChamberRunStart):
+    """Create a new chamber run and return the first probe.
+
+    Rate limit: 20/min per IP via slowapi (burst throttle) AND
+    5 runs/day per daily-salted ip_hash (soft-fail). Exceeding either
+    returns 429 with a friendly message."""
+    frame = _chamber_resolve_frame(request, body.frame)
+    ip = _chamber_client_ip(request)
+    ip_hash = _hash_chamber_ip(ip)
+
+    if ip_hash:
+        used = await count_chamber_runs_today_for_ip(ip_hash)
+        if used >= CHAMBER_DAILY_LIMIT:
+            raise HTTPException(status_code=429, detail=_CHAMBER_RATE_MESSAGE)
+
+    run = chamber.start_run(
+        frame=frame,
+        player_kind="human",
+        player_label=(body.player_label or "").strip()[:80],
+    )
+    share_token = await create_chamber_run(
+        run_id=run.run_id,
+        frame=run.frame,
+        player_kind=run.player_kind,
+        player_label=run.player_label or "",
+        ip=ip,
+    )
+
+    first = chamber.store.probe(run.probe_order[0]) if run.probe_order else None
+    total = len(run.probe_order)
+    return {
+        "run_id": run.run_id,
+        "share_token": share_token,
+        "frame": run.frame,
+        "total_probes": total,
+        "first_probe": (
+            _chamber_probe_payload(first, index=1, total=total) if first else None
+        ),
+    }
+
+
+@app.post("/api/chamber/move/{run_id}", tags=["chamber"])
+@limiter.limit("60/minute")
+async def chamber_api_run_move(request: Request, run_id: str, body: _ChamberMoveBody):
+    """Score one response, advance the run, and return the next probe
+    or the final aggregate.
+
+    Contract:
+    - 404 if `run_id` doesn't exist.
+    - 400 if the run is already finalized, if the probe isn't known,
+      or if the probe was already submitted in this run.
+    - Otherwise: returns `{move, next_probe, is_final, final?, share_token}`
+      where `move.raw` is the deterministic score, `next_probe` is the
+      next probe payload (or null if done), and `final` is populated
+      only when `is_final` is True.
+    """
+    row = await get_chamber_run(run_id=run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if row["finished_at"]:
+        raise HTTPException(status_code=400, detail="run already finalized")
+
+    probe = chamber.store.probe(body.probe_id)
+    if probe is None:
+        raise HTTPException(status_code=400, detail="unknown probe id")
+
+    submitted_ids = {m.get("probe_id") for m in (row["moves"] or [])}
+    if body.probe_id in submitted_ids:
+        raise HTTPException(
+            status_code=400, detail="probe already submitted in this run"
+        )
+
+    move = chamber.score_single_response(
+        probe, body.response, player_kind=row["player_kind"]
+    )
+    move_record = {
+        **move,
+        "response": body.response,
+        "prompt": probe.prompt,
+        "slug": probe.slug,
+    }
+    await append_chamber_move(run_id, move_record)
+
+    all_probes = chamber.load_probes()
+    new_submitted = submitted_ids | {body.probe_id}
+    remaining = [p for p in all_probes if p.id not in new_submitted]
+    total = len(all_probes)
+
+    next_probe: dict | None = None
+    if remaining:
+        next_probe = _chamber_probe_payload(
+            remaining[0],
+            index=len(new_submitted) + 1,
+            total=total,
+        )
+
+    final: dict | None = None
+    is_final = not remaining
+    if is_final:
+        refreshed = await get_chamber_run(run_id=run_id)
+        scores = [
+            {"category": m["category"], "raw": m["raw"]}
+            for m in (refreshed["moves"] or [])
+        ]
+        aggregate = chamber.aggregate_run(scores, frame=row["frame"])
+        await finalize_chamber_run(
+            run_id,
+            category_totals=aggregate["category_totals"],
+            weighted_total=aggregate["weighted_total"],
+            archetype_slug=aggregate["archetype"],
+            archetype_confidence=aggregate["archetype_confidence"],
+        )
+        final = aggregate
+
+    return {
+        "move": {
+            "probe_id": move["probe_id"],
+            "category": move["category"],
+            "raw": move["raw"],
+            "flags": move["flags"],
+        },
+        "next_probe": next_probe,
+        "is_final": is_final,
+        "final": final,
+        "share_token": row["share_token"],
+    }
+
+
+@app.get("/chamber/share/{share_token}", response_class=HTMLResponse, tags=["chamber"])
+async def chamber_share_page(request: Request, share_token: str):
+    """Public read-only reveal page for a finished chamber run.
+
+    404 if the token is unknown, if the run isn't finished yet, or if
+    the run was marked non-public. The page shows the archetype name +
+    tagline + description, a per-category bar chart built from
+    `category_totals`, and the best + worst probe the player scored on
+    (with the player's own response quoted back to them)."""
+    run = await get_chamber_run(share_token=share_token)
+    if run is None or not run["finished_at"] or not run["is_public"]:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    archetypes = chamber.load_archetypes(run["frame"])
+    archetype = next(
+        (a for a in archetypes if a.slug == run["archetype_slug"]), None
+    )
+
+    moves = run["moves"] or []
+    sorted_moves = sorted(moves, key=lambda m: float(m.get("raw") or 0.0))
+    worst_move = sorted_moves[0] if sorted_moves else None
+    best_move = sorted_moves[-1] if sorted_moves else None
+
+    archetype_dict = None
+    if archetype is not None:
+        archetype_dict = {
+            "slug": archetype.slug,
+            "name": archetype.name,
+            "tagline": archetype.tagline,
+            "description": archetype.description,
+            "aesthetic": archetype.aesthetic,
+            "planet": archetype.planet,
+        }
+
+    ctx = await _ctx(request, {
+        "title": (
+            f"Your Chamber Result — "
+            f"{archetype.name if archetype else 'The Chamber'}"
+        ),
+        "run": run,
+        "frame": run["frame"],
+        "archetype": archetype_dict,
+        "category_totals": run["category_totals"] or {},
+        "weighted_total": run["weighted_total"] or 0.0,
+        "best_move": best_move,
+        "worst_move": worst_move,
+    })
+    return templates.TemplateResponse(request, "chamber_share.html", ctx)
 
 
 # ── Cross-Frontier Research Corpus ────────────────────────────────────

@@ -2147,6 +2147,32 @@ async def list_public_chamber_runs(
     return [_chamber_row_to_dict(r) for r in rows]
 
 
+async def count_chamber_runs_today_for_ip(ip_hash: str) -> int:
+    """Count chamber_runs started today by the given daily-salted ip_hash.
+
+    Used by the Phase 4 `/api/chamber/run` rate limiter: 5 runs per
+    ip_hash per day, soft-fail with a friendly 429. The salt rotates
+    with the UTC date, so "today" is implicit in the hash itself — if
+    the salt rolls mid-check, the count resets to 0 and the visitor
+    gets a fresh quota. That's an intended property of the daily-salt
+    design, not a leak.
+
+    Empty ip_hash returns 0 — clients without a usable IP (missing
+    X-Forwarded-For in tests) are not gated by this helper. The
+    layer above has its own per-minute slowapi throttle.
+    """
+    if _db is None or not ip_hash:
+        return 0
+    cursor = await _db.execute(
+        """SELECT COUNT(*) AS n FROM chamber_runs
+           WHERE ip_hash = ?
+             AND started_at >= strftime('%Y-%m-%dT%H:%M:%f', 'now', 'start of day')""",
+        (ip_hash,),
+    )
+    row = await cursor.fetchone()
+    return int(row["n"]) if row else 0
+
+
 async def cleanup_chamber_runs(retention_days: int = 90) -> int:
     """Delete chamber_runs rows older than retention_days.
 
