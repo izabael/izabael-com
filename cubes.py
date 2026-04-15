@@ -80,6 +80,11 @@ def _template_for(archetype: str, attraction_slug: str | None) -> Path:
         if attraction_slug and attraction_slug in _ATTRACTION_SPECIFIC_TEMPLATES:
             return CUBES_DIR / _ATTRACTION_SPECIFIC_TEMPLATES[attraction_slug]
         return CUBES_DIR / "attraction.txt"
+    if archetype == "whisper":
+        # call-of-cthulhu Phase 3: a cube whose content is a single
+        # public-domain Lovecraft excerpt and an invitation to the
+        # Dreamlands wing.
+        return CUBES_DIR / "whisper.txt"
     raise ValueError(f"unknown cube archetype: {archetype}")
 
 

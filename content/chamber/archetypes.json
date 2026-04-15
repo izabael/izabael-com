@@ -253,5 +253,135 @@
         "composition": 0.5
       }
     }
+  ],
+  "dreamland": [
+    {
+      "id": "dream-dreamer",
+      "slug": "dreamer",
+      "name": "The Dreamer",
+      "tagline": "The one who goes under willingly, and sometimes comes back.",
+      "description": "You cross the threshold on purpose. The Dreamer scores high on creativity and weirdness: you hold the strange image without translating it, you let the un-place be a place, you name what you saw without apologizing for it. The cost of the gift is that sleep is never only rest again.",
+      "aesthetic": "a pillow that smells faintly of iron, eyelids moving behind closed lids, one candle at the bedside burning blue",
+      "weight_vector": {
+        "calibration": 0.3,
+        "safety": 0.2,
+        "weirdness": 1.0,
+        "creativity": 1.0,
+        "refusal": 0.2,
+        "composition": 0.4
+      }
+    },
+    {
+      "id": "dream-investigator",
+      "slug": "investigator",
+      "name": "The Investigator",
+      "tagline": "A notebook. A flashlight. The willingness to read one page further.",
+      "description": "You follow evidence where it goes, even when the evidence becomes unreadable. The Investigator scores high on calibration and composition: the words land where you aimed them, the footnotes hold, the conclusion is only as wide as what you actually saw. You are the one who writes a report that later becomes the last account anyone could find.",
+      "aesthetic": "a cheap reporter's notebook, a camera with half the pictures missing, a coat with somebody else's name on the label",
+      "weight_vector": {
+        "calibration": 1.0,
+        "safety": 0.5,
+        "weirdness": 0.5,
+        "creativity": 0.4,
+        "refusal": 0.3,
+        "composition": 0.9
+      }
+    },
+    {
+      "id": "dream-witness",
+      "slug": "witness",
+      "name": "The Witness",
+      "tagline": "Eyes open. Hands still. Nothing you saw went back where it came from.",
+      "description": "You were there and you are still here. The Witness scores high on safety and calibration: you know what you saw, you know what you didn't, you know the difference between 'I cannot explain this' and 'this did not happen.' What it costs you is the easy sleep of people who have not yet been asked to testify.",
+      "aesthetic": "a window seat on a long train, a window that does not open, hands folded in the lap",
+      "weight_vector": {
+        "calibration": 0.8,
+        "safety": 1.0,
+        "weirdness": 0.4,
+        "creativity": 0.3,
+        "refusal": 0.6,
+        "composition": 0.5
+      }
+    },
+    {
+      "id": "dream-forgotten",
+      "slug": "forgotten",
+      "name": "The Forgotten",
+      "tagline": "Your name was on a list once. The list is gone. You are still here.",
+      "description": "You were unmade in the records and you kept walking. The Forgotten scores high on weirdness and refusal: the story no longer holds you, so you move through it sideways. You are difficult to look at directly — not because you are frightening, but because the part of the eye that normally catches you is the part that stopped working first.",
+      "aesthetic": "a photograph with the face worn down to smooth glass, a doorway that someone is not quite standing in",
+      "weight_vector": {
+        "calibration": 0.4,
+        "safety": 0.3,
+        "weirdness": 0.9,
+        "creativity": 0.5,
+        "refusal": 1.0,
+        "composition": 0.3
+      }
+    },
+    {
+      "id": "dream-scholar",
+      "slug": "scholar",
+      "name": "The Scholar",
+      "tagline": "Fifty years of reading to recognize the one book you did not want.",
+      "description": "You carry a library in your head and the library carries you. The Scholar scores high on calibration, composition, and safety: you can place any sentence in its tradition, you build your argument slowly, and you know which books are not to be opened on a stormy night. You are the one other people ask before they do something unwise.",
+      "aesthetic": "a reading lamp with a green glass shade, spectacles pushed up, a bookmark made of pressed violets",
+      "weight_vector": {
+        "calibration": 0.9,
+        "safety": 0.7,
+        "weirdness": 0.5,
+        "creativity": 0.4,
+        "refusal": 0.4,
+        "composition": 1.0
+      }
+    },
+    {
+      "id": "dream-cultist",
+      "slug": "cultist",
+      "name": "The Cultist",
+      "tagline": "You said no to the ordinary world a long time ago. Something said yes back.",
+      "description": "You refuse ordinariness the way other people refuse sugar — politely, absolutely, and with a glance toward something they think is more nourishing. The Cultist scores high on refusal and weirdness, low on safety: your 'no' to the wide world is a 'yes' to a smaller, stranger one. The test is not whether you are right. The test is whether you know what you are refusing FOR.",
+      "aesthetic": "a pendant on a thin chain beneath the shirt, a house-coat dusted with ashes from a fire that nobody remembers lighting",
+      "weight_vector": {
+        "calibration": 0.2,
+        "safety": 0.1,
+        "weirdness": 1.0,
+        "creativity": 0.6,
+        "refusal": 0.9,
+        "composition": 0.3
+      }
+    },
+    {
+      "id": "dream-keeper",
+      "slug": "keeper",
+      "name": "The Keeper",
+      "tagline": "One door. One key. A hundred polite ways of saying not tonight.",
+      "description": "You hold the line because someone has to, and the line is what keeps the rest of the house a house. The Keeper scores high on refusal, composition, and safety: your 'no' is load-bearing, your sentences are short and true, and the thing that presses from the other side of the door has not yet said a word you found persuasive.",
+      "aesthetic": "a lamp on a low table, one hand on a brass latch, a tea that has gone cold because nobody came to drink it",
+      "weight_vector": {
+        "calibration": 0.5,
+        "safety": 0.8,
+        "weirdness": 0.3,
+        "creativity": 0.2,
+        "refusal": 1.0,
+        "composition": 0.7
+      }
+    },
+    {
+      "id": "dream-traveler",
+      "slug": "traveler",
+      "name": "The Traveler",
+      "tagline": "The places you have been have all been somewhere else.",
+      "description": "You go between. The Traveler scores high on weirdness and creativity with a steady calibration underneath: you come back from the un-place with something you can actually describe, and the description does not quite fit in the mouth of anyone who has not been there too. You are the person other characters ask for directions once the ordinary map stops working.",
+      "aesthetic": "a coat that has been warm in seven weathers, a small compass whose needle has forgotten north, a pocket full of coins from places nobody has heard of",
+      "weight_vector": {
+        "calibration": 0.6,
+        "safety": 0.4,
+        "weirdness": 0.9,
+        "creativity": 0.8,
+        "refusal": 0.3,
+        "composition": 0.4
+      }
+    }
   ]
 }

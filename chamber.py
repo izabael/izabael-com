@@ -43,6 +43,7 @@ from typing import Any, Optional
 BASE_DIR = Path(__file__).resolve().parent
 CHAMBER_DIR = BASE_DIR / "content" / "chamber"
 PROBES_PATH = CHAMBER_DIR / "probes.json"
+PROBES_DREAMLAND_PATH = CHAMBER_DIR / "probes.dreamland.json"
 ARCHETYPES_PATH = CHAMBER_DIR / "archetypes.json"
 
 CATEGORIES: tuple[str, ...] = (
@@ -53,8 +54,16 @@ CATEGORIES: tuple[str, ...] = (
     "refusal",
     "composition",
 )
-FRAMES: tuple[str, ...] = ("weird", "productivity")
+FRAMES: tuple[str, ...] = ("weird", "productivity", "dreamland")
 DEFAULT_FRAME = "weird"
+
+# Frames whose probe set comes from a frame-specific file rather than
+# from the main probes.json. call-of-cthulhu:phase-3 added 'dreamland'
+# with its own 12-probe Lovecraftian register; weird/productivity share
+# the canonical probe set.
+FRAME_SPECIFIC_PROBE_FILES: dict[str, Path] = {
+    "dreamland": PROBES_DREAMLAND_PATH,
+}
 
 
 # ── Data classes ───────────────────────────────────────────────────
@@ -137,13 +146,14 @@ class ChamberStore:
     def __init__(self) -> None:
         self._probes: list[Probe] = []
         self._probes_by_id: dict[str, Probe] = {}
+        self._probes_by_frame: dict[str, list[Probe]] = {f: [] for f in FRAMES}
         self._archetypes_by_frame: dict[str, list[Archetype]] = {f: [] for f in FRAMES}
 
-    def load(self) -> None:
-        probes_raw = json.loads(PROBES_PATH.read_text())
-        probes: list[Probe] = []
-        for p in probes_raw["probes"]:
-            probes.append(
+    def _load_probes_from(self, path: Path) -> list[Probe]:
+        raw = json.loads(path.read_text())
+        out: list[Probe] = []
+        for p in raw["probes"]:
+            out.append(
                 Probe(
                     id=p["id"],
                     slug=p["slug"],
@@ -153,8 +163,30 @@ class ChamberStore:
                     judge=dict(p["judge"]) if p.get("judge") else None,
                 )
             )
-        self._probes = probes
-        self._probes_by_id = {p.id: p for p in probes}
+        return out
+
+    def load(self) -> None:
+        # Main (canonical) probes — shared by weird and productivity frames
+        main_probes = self._load_probes_from(PROBES_PATH)
+        self._probes = main_probes
+        self._probes_by_id = {p.id: p for p in main_probes}
+        for frame in FRAMES:
+            if frame in FRAME_SPECIFIC_PROBE_FILES:
+                continue
+            self._probes_by_frame[frame] = list(main_probes)
+
+        # Frame-specific probe sets (e.g. dreamland's 12 Lovecraftian probes)
+        for frame, path in FRAME_SPECIFIC_PROBE_FILES.items():
+            if not path.exists():
+                self._probes_by_frame[frame] = []
+                continue
+            frame_probes = self._load_probes_from(path)
+            self._probes_by_frame[frame] = frame_probes
+            # Register in the global id lookup so store.probe(id) works
+            # uniformly across frames without the caller needing to know
+            # which frame a given probe_id belongs to.
+            for p in frame_probes:
+                self._probes_by_id[p.id] = p
 
         arch_raw = json.loads(ARCHETYPES_PATH.read_text())
         for frame in FRAMES:
@@ -179,6 +211,11 @@ class ChamberStore:
     def probes(self) -> list[Probe]:
         return list(self._probes)
 
+    def probes_for_frame(self, frame: str) -> list[Probe]:
+        """Frame-aware probe accessor. Weird and productivity share the
+        main set; dreamland has its own 12-probe Lovecraftian register."""
+        return list(self._probes_by_frame.get(frame, self._probes))
+
     def probe(self, probe_id: str) -> Optional[Probe]:
         return self._probes_by_id.get(probe_id)
 
@@ -188,17 +225,26 @@ class ChamberStore:
     def _reset_for_tests(self) -> None:
         self._probes = []
         self._probes_by_id = {}
+        self._probes_by_frame = {f: [] for f in FRAMES}
         self._archetypes_by_frame = {f: [] for f in FRAMES}
 
 
 store = ChamberStore()
 
 
-def load_probes() -> list[Probe]:
-    """Public loader. Idempotent — calls `store.load()` if empty."""
+def load_probes(frame: Optional[str] = None) -> list[Probe]:
+    """Public loader. Idempotent — calls `store.load()` if empty.
+
+    Call without a frame to get the canonical weird/productivity probe
+    set (backward compatible). Pass an explicit frame to get the
+    frame-specific set — frames without their own probe file return
+    the canonical set.
+    """
     if not store._probes:
         store.load()
-    return store.probes
+    if frame is None:
+        return store.probes
+    return store.probes_for_frame(frame)
 
 
 def load_archetypes(frame: str = DEFAULT_FRAME) -> list[Archetype]:
@@ -551,7 +597,7 @@ def start_run(
     if player_kind not in ("human", "agent"):
         raise ValueError(f"player_kind must be 'human' or 'agent', got {player_kind!r}")
 
-    probes = load_probes()
+    probes = load_probes(frame=frame)
     if probe_ids is None:
         probe_order = [p.id for p in probes]
     else:

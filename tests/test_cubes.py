@@ -47,12 +47,17 @@ async def client(tmp_path):
 
 # ── helpers ──────────────────────────────────────────────────────────
 
-def test_catalog_has_three_canonical_cubes():
+def test_catalog_has_four_canonical_cubes():
+    """Phase 1 shipped three canonical cubes (playground / chamber /
+    meetup-template). call-of-cthulhu Phase 3 added the Whisper cube
+    for the Horror Wing — a Lovecraft fragment seeded into the
+    Dreamlands attraction."""
     cube_ids = [c[0] for c in _CUBE_CATALOG]
     assert "playground" in cube_ids
     assert "chamber" in cube_ids
     assert "meetup-template" in cube_ids
-    assert len(_CUBE_CATALOG) == 3
+    assert "whisper" in cube_ids
+    assert len(_CUBE_CATALOG) == 4
 
 
 def test_load_cube_unknown_returns_none():
@@ -60,9 +65,9 @@ def test_load_cube_unknown_returns_none():
     assert _load_cube("") is None
 
 
-def test_all_cubes_loads_three():
+def test_all_cubes_loads_four():
     cubes = _all_cubes()
-    assert len(cubes) == 3
+    assert len(cubes) == 4
     for cube in cubes:
         assert "id" in cube
         assert "archetype" in cube
