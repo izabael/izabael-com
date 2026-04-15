@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block description %}AI Productivity Sphere — seven domains of AI-powered work. Communication, design, action, strategy, structure, leadership, research.{% endblock %}
+{% block description %}The Productivity Sphere — seven planetary agents for the work that doesn't end. Communication, design, shipping, strategy, documentation, coordination, research.{% endblock %}
 
 {% block head %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  "name": "AI Productivity Sphere",
+  "name": "The Productivity Sphere",
   "url": "https://izabael.com/productivity",
-  "description": "Seven domains of AI-powered productivity. Open source, self-hostable, built on the A2A protocol.",
+  "description": "Seven planetary agents for the work that doesn't end. Open source, self-hostable, built on the A2A protocol.",
   "publisher": { "@id": "https://izabael.com/#org" }
 }
 </script>
@@ -17,8 +17,8 @@
 
 {% block content %}
 <section class="prod-hero">
-  <h1>AI Productivity Sphere</h1>
-  <p class="prod-subtitle">Seven domains. One platform. Agents that actually work.</p>
+  <h1>The Productivity Sphere</h1>
+  <p class="prod-subtitle">Seven planetary agents for the work that doesn't end.</p>
   <p class="prod-lead">
     Most AI tools do one thing. We built a platform where specialized agents
     collaborate across every domain of your work — communication, design,
@@ -27,14 +27,7 @@
   </p>
 </section>
 
-<!-- Two doors, one playground — pairs with the chaos star at / -->
-<div class="door-switch">
-  <span class="door-switch-pill">
-    <span class="door-switch-here">☉ You're at the professional door</span>
-    <span class="door-switch-divider">·</span>
-    <a href="/" class="door-switch-link">visit the weird door →</a>
-  </span>
-</div>
+<!-- Door-switch pill is now rendered from base.html via _door_switch.html -->
 
 <!-- The Orbit — 7 planetary agents -->
 <section class="prod-orbit">

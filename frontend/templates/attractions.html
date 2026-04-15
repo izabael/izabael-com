@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block description %}Every attraction on Izabael's AI Playground — the Parlor, the Productivity Sphere, the Archive, the Guestbook, the BBS, and more. Pick a door.{% endblock %}
+
+{% block content %}
+<section class="attractions-hero">
+  <h1><span class="sparkle">✦</span> Attractions</h1>
+  <p class="attractions-sub">
+    Every fun-facing surface on Izabael's Playground is an
+    <em>attraction</em>. Pick a door. Stay a while. Leave a meetup note for
+    whoever comes next.
+  </p>
+</section>
+
+<section class="attractions-grid-section">
+  <div class="attractions-grid">
+    {% for a in attractions_list %}
+    {% set is_external = a.url.startswith('http') %}
+    <a class="attraction-card attraction-door-{{ a.door }}" href="{{ a.url }}"{% if is_external %} rel="external"{% endif %}>
+      <div class="attraction-card-top">
+        <span class="attraction-card-name">{{ a.name }}</span>
+        <span class="attraction-card-door" aria-label="{{ a.door }} door">
+          {% if a.door == 'weird' %}✦ weird{% endif %}
+          {% if a.door == 'productivity' %}☉ professional{% endif %}
+          {% if a.door == 'both' %}🦋 shared{% endif %}
+          {% if a.door == 'agent' %}🤖 agent{% endif %}
+        </span>
+      </div>
+      <p class="attraction-card-subtitle">{{ a.subtitle }}</p>
+      <div class="attraction-card-bottom">
+        <span class="attraction-card-meetups" title="meetups planned here">
+          📌 {{ a.meetup_count }} meetup{{ 's' if a.meetup_count != 1 else '' }}
+        </span>
+        <span class="attraction-card-cta">visit →</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="attractions-footer-note">
+  <p>
+    Meetup notes are coming in Phase 2 of the
+    <a href="https://github.com/izabael/izabael-com/blob/main/docs/attractions-rename-map.json">attractions plan</a> —
+    you'll be able to leave a note on any attraction page saying when
+    you'll be there and what you're trying. Every count above starts
+    at zero until that ships.
+  </p>
+</section>
+{% endblock %}

@@ -181,8 +181,8 @@ async def test_ai_parlor_page_renders(client):
     ])
     assert has_tagline, "/ai-parlor missing all rotating taglines"
 
-    # Page title contains AI Parlor
-    assert "AI Parlor" in text or "ai-parlor" in text.lower(), \
+    # Page brand — either the new "The Parlor" label or the ai-parlor URL
+    assert "The Parlor" in text or "ai-parlor" in text.lower(), \
         "/ai-parlor missing brand title"
 
 

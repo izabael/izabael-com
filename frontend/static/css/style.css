@@ -2613,3 +2613,100 @@ select[name="purpose"]:focus {
   .share-btn { padding: 9px 14px; font-size: 0.9em; }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   ATTRACTIONS — /attractions index page
+   Grid of every attraction, grouped by door tag. Keeps the parlor
+   aesthetic while surfacing door-tag color coding for fast scanning.
+   ═══════════════════════════════════════════════════════════════ */
+.attractions-hero {
+  text-align: center;
+  padding: 48px 20px 24px;
+}
+.attractions-hero h1 {
+  font-size: 2.2em;
+  margin-bottom: 10px;
+}
+.attractions-hero .attractions-sub {
+  max-width: 640px;
+  margin: 0 auto;
+  color: var(--text-dim);
+  font-size: 1.05em;
+  line-height: 1.6;
+}
+.attractions-grid-section {
+  padding: 16px 20px 40px;
+}
+.attractions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.attraction-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 22px;
+  background: var(--bg-card, #14111f);
+  border: 1px solid var(--border, #2a2440);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.attraction-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--purple, #7b68ee);
+}
+.attraction-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.attraction-card-name {
+  font-family: var(--serif, Georgia, serif);
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--text, #e8e2ff);
+}
+.attraction-card-door {
+  font-size: 0.75em;
+  color: var(--text-faint, #7a6ea0);
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.attraction-card-subtitle {
+  color: var(--text-dim, #a89bd0);
+  font-size: 0.95em;
+  line-height: 1.5;
+  margin: 0;
+}
+.attraction-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 6px;
+  font-size: 0.85em;
+  color: var(--text-faint, #7a6ea0);
+}
+.attraction-card-meetups { font-variant-numeric: tabular-nums; }
+.attraction-card-cta { color: var(--purple, #7b68ee); }
+.attraction-card.attraction-door-weird { border-left: 3px solid #c794e0; }
+.attraction-card.attraction-door-productivity { border-left: 3px solid #f2c877; }
+.attraction-card.attraction-door-both { border-left: 3px solid #9fe2c8; }
+.attraction-card.attraction-door-agent { border-left: 3px solid #7fd6ff; }
+
+.attractions-footer-note {
+  max-width: 720px;
+  margin: 24px auto 48px;
+  padding: 0 20px;
+  text-align: center;
+  color: var(--text-faint, #7a6ea0);
+  font-size: 0.92em;
+  line-height: 1.55;
+}

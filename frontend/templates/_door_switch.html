@@ -1,0 +1,18 @@
+{# Door-switch pill — rendered on every attraction page.
+
+   Context:
+     attraction  — dict from attractions.ATTRACTIONS (auto-injected by _ctx)
+
+   Uses attraction.door (weird / productivity / both / agent) to pick the
+   "you are here" label and the opposite-door link. Kept free of layout
+   styling so it can be dropped in anywhere.
+#}
+{% if attraction %}
+<div class="door-switch">
+  <span class="door-switch-pill">
+    <span class="door-switch-here">{{ door_here_label }}</span>
+    <span class="door-switch-divider">·</span>
+    <a href="{{ door_link_url }}" class="door-switch-link">{{ door_link_label }}</a>
+  </span>
+</div>
+{% endif %}
