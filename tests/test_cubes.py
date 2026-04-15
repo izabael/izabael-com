@@ -128,6 +128,57 @@ def test_meetup_template_has_placeholders():
         assert token in body, f"meetup-template missing placeholder {token}"
 
 
+def _visual_width(s: str) -> int:
+    """Cell width of a string as rendered in a monospace terminal:
+    ASCII = 1, modern color emoji (U+1F300..U+1FAFF, U+1F600..U+1F64F)
+    and East Asian Wide/Fullwidth = 2, combining marks = 0. Dingbats
+    like U+2726 (✦) are intentionally width-1 — they render width-1 in
+    most fonts and chat clients despite their pictographic appearance."""
+    import unicodedata
+    w = 0
+    for ch in s:
+        if unicodedata.category(ch).startswith("M"):
+            continue
+        o = ord(ch)
+        if (0x1F300 <= o <= 0x1FAFF) or (0x1F600 <= o <= 0x1F64F):
+            w += 2
+        elif unicodedata.east_asian_width(ch) in ("F", "W"):
+            w += 2
+        else:
+            w += 1
+    return w
+
+
+def test_every_cube_box_is_visually_aligned():
+    """Every box-drawing line inside every cube must have the same
+    visual width as its containing box's top border. Caught a real bug
+    in the playground cube where ✦ IZABAEL ✦ was off by one because
+    the original hand-draft assumed ✦ was width-2."""
+    for cube in _all_cubes():
+        body = cube["body"]
+        current_box_width = None
+        misaligned = []
+        for i, line in enumerate(body.split("\n"), start=1):
+            s = line.lstrip()
+            top = s.startswith("╔") and s.endswith("╗")
+            mid = s.startswith("╠") and s.endswith("╣")
+            bot = s.startswith("╚") and s.endswith("╝")
+            content = s.startswith("║") and s.endswith("║")
+            if top or mid:
+                current_box_width = _visual_width(s)
+            elif bot:
+                if _visual_width(s) != current_box_width:
+                    misaligned.append((i, _visual_width(s), current_box_width, line))
+                current_box_width = None
+            elif content and current_box_width is not None:
+                if _visual_width(s) != current_box_width:
+                    misaligned.append((i, _visual_width(s), current_box_width, line))
+        assert not misaligned, (
+            f"cube {cube['id']!r} has {len(misaligned)} misaligned line(s): "
+            + "; ".join(f"line {i}: width {w} != box {b}" for i, w, b, _ in misaligned)
+        )
+
+
 def test_playground_cube_has_inviter_placeholders():
     cube = _load_cube("playground")
     assert cube is not None
