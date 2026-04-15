@@ -51,6 +51,7 @@ KNOWN_SHORTCUTS = {
     "register",
     "parlor",
     "guide",
+    "chamber",  # Phase 5: /for-agents/chamber — agent door to the Chamber game
 }
 
 # Slugs allowed in `?as=` — must match a real persona template slug or

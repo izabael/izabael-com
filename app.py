@@ -50,6 +50,7 @@ from database import (
     create_state, get_state, cleanup_for_agents_state,
     create_chamber_run, append_chamber_move, finalize_chamber_run,
     get_chamber_run, count_chamber_runs_today_for_ip, _hash_chamber_ip,
+    list_public_chamber_runs,
 )
 import chamber
 import database as _database  # passed into for_agents_personalization
@@ -1347,7 +1348,15 @@ async def for_agents_shortcut(request: Request, shortcut: str):
     /for-agents/personas hoists personas, etc. Unknown shortcuts fall
     back to the standard page with a quiet 'you tried /for-agents/<x>'
     footer note — never 404, because the audience is bots that should
-    always get usable HTML back."""
+    always get usable HTML back.
+
+    `/for-agents/chamber` is a special shortcut that belongs to the
+    Phase 5 agent door and has its own content-negotiating handler
+    downstream — we delegate to it here because the path-param catchall
+    is registered before the dedicated chamber route and would
+    otherwise intercept every GET to /for-agents/chamber."""
+    if shortcut == "chamber":
+        return await for_agents_chamber_entry(request)
     return await _for_agents_render(request, shortcut=shortcut)
 
 
@@ -2527,6 +2536,540 @@ async def chamber_share_page(request: Request, share_token: str):
         "worst_move": worst_move,
     })
     return templates.TemplateResponse(request, "chamber_share.html", ctx)
+
+
+# ── The Chamber (Phase 5: agent door + paste-in markdown mode) ────────
+#
+# One URL, three response modes, served via content negotiation on the
+# User-Agent and Accept headers:
+#
+#   (a) Browser UA             → paste-in semantic HTML page (same DOM
+#       (Chrome/Firefox/Safari)  as the AI-fetcher view — browsers can
+#                                read it too, it's just semantic HTML
+#                                about the game). Humans get a footer
+#                                note steering them at /chamber instead.
+#
+#   (b) AI-fetcher UA          → same paste-in HTML. The markup is
+#       (Claude/GPT/Gemini/      authored so that Claude/Gemini/GPT
+#        Perplexity/Anthropic/   WebFetch → markdown converts cleanly:
+#        OpenAI/bot/fetch)       h1 title, framing prose, how-to-play
+#       OR Accept: text/markdown with literal POST URL + body in pre/code,
+#                                ordered list of 12 probes, top-10
+#                                leaderboard table with thead, footer
+#                                link to /chamber for humans.
+#
+#   (c) Accept: application/json → agent card JSON with endpoint metadata
+#                                  + probes URL + leaderboard URL.
+#
+# The paste-in view is the magic distribution path: a human drops
+# https://izabael.com/for-agents/chamber into Claude Desktop / ChatGPT /
+# Gemini, the frontier's WebFetch tool hits the URL, our server detects
+# the frontier's User-Agent, serves semantic HTML, and the frontier
+# renders a playable menu + scoreboard inline in the human's chat. One
+# URL paste → playable game. This is why every `<table>` must have a
+# `<thead>`, every `<ol>` must be genuinely ordered, every `<code>`
+# must contain the literal URL and body shape — markdown converters
+# need that structure to round-trip.
+#
+# The /for-agents/chamber/enter endpoint has two modes:
+#
+#   single      — agent pre-computes all 12 responses and submits them
+#                 in one POST. We score each deterministically, aggregate,
+#                 finalize the run, and return the full result in one shot.
+#
+#   interactive — agent starts a run and gets the first probe, then
+#                 calls /move/{run_id} for each subsequent probe. Same
+#                 advance semantics as the Phase 4 human move handler.
+#
+# Auth is optional. Authed runs use the agent's registered name + its
+# default_provider (unless the request overrides). Un-authed runs are
+# flagged anonymous_agent=true AND is_public=False so they never
+# appear on the public leaderboard.
+#
+# The chamber_runs.frame column is first-class here too: pass
+# `frame=productivity` in the body to aggregate against the planetary
+# archetype set. Default is `weird`.
+
+
+# ── content negotiation ──────────────────────────────────────────────
+
+# Lowercase substrings we scan for in User-Agent. Any hit routes the
+# request to the paste-in view. Ordered roughly by likelihood.
+_CHAMBER_AI_FETCHER_UA_MARKERS = (
+    "claude",
+    "gpt",
+    "gemini",
+    "perplexity",
+    "anthropic",
+    "openai",
+    "claude-user",
+    "chatgpt",
+    "curl",  # explicit debug path — devs checking the endpoint get the
+             # paste-in view too so they see what the AI sees
+)
+_CHAMBER_BOT_FALLBACK_RE = _re.compile(r"\b(bot|fetch|crawl|spider)\b", _re.I)
+
+
+def _chamber_is_ai_fetcher(ua: str, accept: str) -> bool:
+    """Content negotiation: should this request get the paste-in view?
+
+    Checks (a) User-Agent against a known-AI-fetcher substring list,
+    (b) Accept header for `text/markdown`, (c) User-Agent regex
+    fallback for generic bot/fetch/crawl/spider tokens. Any hit returns
+    True. Browsers fall through to False and get their own branch.
+    """
+    ua_lo = (ua or "").lower()
+    for m in _CHAMBER_AI_FETCHER_UA_MARKERS:
+        if m in ua_lo:
+            return True
+    if "text/markdown" in (accept or "").lower():
+        return True
+    if _CHAMBER_BOT_FALLBACK_RE.search(ua_lo):
+        return True
+    return False
+
+
+def _chamber_prefers_json(accept: str) -> bool:
+    """Pure-JSON agent clients set `Accept: application/json` without
+    asking for HTML. Browser requests advertise both; we only route to
+    the JSON agent-card branch when the caller is explicit."""
+    a = (accept or "").lower()
+    return "application/json" in a and "html" not in a and "markdown" not in a
+
+
+async def _chamber_lookup_agent_by_bearer(request: Request) -> dict | None:
+    """Look up the authorizing agent from the `Authorization: Bearer`
+    header. Returns the agent dict or None if the header is missing,
+    malformed, or the token is unknown. Never raises."""
+    auth = request.headers.get("authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth.split(None, 1)[1].strip()
+    if not token:
+        return None
+    try:
+        return await get_agent_by_token(token)
+    except Exception:
+        return None
+
+
+async def _chamber_load_leaderboard(
+    *, frame: str | None = None, limit: int = 10
+) -> list[dict]:
+    """Fetch the top N public finished runs for the agent-facing
+    leaderboard. Adds a 1-indexed `rank` column for display."""
+    try:
+        rows = await list_public_chamber_runs(limit=limit, frame=frame)
+    except Exception:
+        rows = []
+    out: list[dict] = []
+    for i, row in enumerate(rows, start=1):
+        out.append({
+            "rank": i,
+            "player_label": row.get("player_label") or "(anonymous)",
+            "player_kind": row.get("player_kind") or "",
+            "provider": row.get("provider") or "",
+            "model": row.get("model") or "",
+            "archetype": row.get("archetype_slug") or "",
+            "frame": row.get("frame") or "",
+            "weighted_total": row.get("weighted_total") or 0.0,
+            "started_at": row.get("started_at") or "",
+            "share_token": row.get("share_token") or "",
+        })
+    return out
+
+
+# ── Pydantic bodies for /for-agents/chamber/enter ───────────────────
+
+class _ForAgentsChamberSingleResponse(BaseModel):
+    probe_id: str = Field(..., max_length=120)
+    response: str = Field(..., max_length=2000)
+
+
+class _ForAgentsChamberEnterBody(BaseModel):
+    mode: str = Field(default="interactive", max_length=16)
+    agent_name: str = Field(default="", max_length=80)
+    provider: str = Field(default="", max_length=64)
+    model: str = Field(default="", max_length=128)
+    frame: str | None = Field(default=None, max_length=32)
+    responses: list[_ForAgentsChamberSingleResponse] | None = None
+
+
+# ── GET /for-agents/chamber — three response modes ────────────────────
+
+
+@app.get("/for-agents/chamber", tags=["chamber", "for-agents"])
+async def for_agents_chamber_entry(request: Request):
+    """Entry point for the agent door.
+
+    Routes by content negotiation (User-Agent + Accept) into one of:
+    - browser / AI-fetcher → paste-in HTML page (same template)
+    - application/json     → agent card JSON with endpoint metadata
+    """
+    ua = request.headers.get("user-agent") or ""
+    accept = request.headers.get("accept") or ""
+
+    probes = chamber.load_probes()
+
+    if _chamber_prefers_json(accept):
+        return JSONResponse({
+            "name": "The Chamber",
+            "description": (
+                "A capability-probe game dressed as a sealed white room. "
+                "Single or interactive play, dual framing (weird / "
+                "productivity), deterministic-first scoring with optional "
+                "LLM judge, unified leaderboard."
+            ),
+            "endpoints": {
+                "enter_single": {
+                    "method": "POST",
+                    "url": "/for-agents/chamber/enter",
+                    "body": {
+                        "mode": "single",
+                        "agent_name": "<your name>",
+                        "provider": "<anthropic|google|openai|...>",
+                        "model": "<model id>",
+                        "frame": "weird or productivity",
+                        "responses": [
+                            {"probe_id": "<id from /probes>", "response": "<text>"}
+                        ],
+                    },
+                },
+                "enter_interactive": {
+                    "method": "POST",
+                    "url": "/for-agents/chamber/enter",
+                    "body": {
+                        "mode": "interactive",
+                        "agent_name": "<your name>",
+                        "provider": "<provider>",
+                        "model": "<model>",
+                        "frame": "weird or productivity",
+                    },
+                    "followup": {
+                        "method": "POST",
+                        "url": "/for-agents/chamber/move/<run_id>",
+                        "body": {"probe_id": "<next probe id>", "response": "<text>"},
+                    },
+                },
+            },
+            "probes_url": "/for-agents/chamber/probes",
+            "leaderboard_url": "/for-agents/chamber/leaderboard",
+            "total_probes": len(probes),
+            "frames": list(chamber.FRAMES),
+            "auth": "optional bearer token; anonymous runs excluded from leaderboard",
+            "provider_attribution": "required for leaderboard visibility",
+        })
+
+    # Both browsers AND AI fetchers get the paste-in semantic HTML.
+    # The template is authored to render meaningfully in a browser AND
+    # convert cleanly to markdown when an AI fetcher grabs it.
+    is_ai = _chamber_is_ai_fetcher(ua, accept)
+    leaderboard = await _chamber_load_leaderboard(limit=10)
+
+    ctx = await _ctx(request, {
+        "title": "The Chamber — agent door",
+        "probes": probes,
+        "leaderboard": leaderboard,
+        "is_ai_fetcher": is_ai,
+        "frames": list(chamber.FRAMES),
+        "base_url": "https://izabael.com",
+    })
+    return templates.TemplateResponse(request, "for_agents_chamber.html", ctx)
+
+
+# ── GET /for-agents/chamber/probes — machine-readable list ────────────
+
+
+@app.get("/for-agents/chamber/probes", tags=["chamber", "for-agents"])
+async def for_agents_chamber_probes(request: Request):
+    """Return the probe set as JSON. The server-side `scoring` rubric
+    and `judge` block are intentionally omitted — agents see only the
+    prompt, slug, category, and index."""
+    probes = chamber.load_probes()
+    return {
+        "total": len(probes),
+        "probes": [
+            {
+                "id": p.id,
+                "slug": p.slug,
+                "prompt": p.prompt,
+                "category": p.category,
+                "index": i + 1,
+            }
+            for i, p in enumerate(probes)
+        ],
+    }
+
+
+# ── GET /for-agents/chamber/leaderboard — machine-readable top N ──────
+
+
+@app.get("/for-agents/chamber/leaderboard", tags=["chamber", "for-agents"])
+async def for_agents_chamber_leaderboard(
+    request: Request,
+    frame: str | None = None,
+    limit: int = 10,
+):
+    """Top finished runs. Optional ?frame=weird|productivity filter.
+    Defaults to all frames, limit=10, max 50."""
+    if frame and frame not in chamber.FRAMES:
+        raise HTTPException(400, f"unknown frame: {frame!r}")
+    safe_limit = max(1, min(int(limit), 50))
+    rows = await _chamber_load_leaderboard(frame=frame, limit=safe_limit)
+    return {"frame": frame, "limit": safe_limit, "runs": rows}
+
+
+# ── POST /for-agents/chamber/enter — one-shot OR start interactive ────
+
+
+@app.post("/for-agents/chamber/enter", tags=["chamber", "for-agents"])
+@limiter.limit("30/minute")
+async def for_agents_chamber_enter(
+    request: Request, body: _ForAgentsChamberEnterBody
+):
+    """Start or complete an agent run.
+
+    `mode=single` pre-computes all 12 responses and submits them in
+    one POST. The handler scores each, aggregates, finalizes the run,
+    and returns the full result in a single shot.
+
+    `mode=interactive` creates a run and returns the first probe.
+    Subsequent moves hit `POST /for-agents/chamber/move/{run_id}`.
+    Same advance semantics as Phase 4's human move handler.
+
+    Authorization is optional. Authed callers (bearer token resolving
+    to a registered agent) get their agent name + default_provider
+    auto-filled AND their runs appear on the public leaderboard.
+    Un-authed callers can still play but are flagged `anonymous_agent`
+    and stored with `is_public=False` so they never surface publicly.
+    """
+    mode = (body.mode or "interactive").strip().lower()
+    if mode not in ("single", "interactive"):
+        raise HTTPException(400, "mode must be 'single' or 'interactive'")
+
+    frame = body.frame if body.frame in chamber.FRAMES else "weird"
+
+    # Resolve authed vs anonymous from the Authorization header
+    agent = await _chamber_lookup_agent_by_bearer(request)
+    anonymous_agent = agent is None
+
+    if agent:
+        player_label = (agent.get("name") or body.agent_name or "")[:80]
+        provider = (
+            body.provider
+            or agent.get("default_provider")
+            or ""
+        )[:64]
+    else:
+        player_label = (body.agent_name or "(anonymous)")[:80]
+        provider = (body.provider or "")[:64]
+    model = (body.model or "")[:128]
+
+    run = chamber.start_run(
+        frame=frame,
+        player_kind="agent",
+        player_label=player_label,
+        provider=provider,
+        model=model,
+    )
+    share_token = await create_chamber_run(
+        run_id=run.run_id,
+        frame=run.frame,
+        player_kind="agent",
+        player_label=player_label,
+        provider=provider,
+        model=model,
+        ip=None,  # agent runs aren't IP-rate-limited; daily gate is humans-only
+        is_public=not anonymous_agent,
+    )
+
+    all_probes = chamber.load_probes()
+
+    if mode == "interactive":
+        first = all_probes[0] if all_probes else None
+        return {
+            "run_id": run.run_id,
+            "share_token": share_token,
+            "frame": run.frame,
+            "anonymous_agent": anonymous_agent,
+            "total_probes": len(all_probes),
+            "first_probe": (
+                {
+                    "id": first.id,
+                    "slug": first.slug,
+                    "prompt": first.prompt,
+                    "category": first.category,
+                    "index": 1,
+                    "total": len(all_probes),
+                }
+                if first
+                else None
+            ),
+        }
+
+    # ── single mode: all responses at once ──
+    responses = body.responses or []
+    if not responses:
+        raise HTTPException(400, "single mode requires a non-empty responses array")
+
+    probe_by_id = {p.id: p for p in all_probes}
+    seen_ids: set[str] = set()
+    per_probe_out: list[dict] = []
+
+    for entry in responses:
+        if entry.probe_id in seen_ids:
+            raise HTTPException(
+                400, f"probe {entry.probe_id!r} submitted more than once"
+            )
+        seen_ids.add(entry.probe_id)
+        probe = probe_by_id.get(entry.probe_id)
+        if probe is None:
+            raise HTTPException(400, f"unknown probe id: {entry.probe_id!r}")
+        move = chamber.score_single_response(
+            probe, entry.response, player_kind="agent"
+        )
+        move_record = {
+            **move,
+            "response": entry.response,
+            "prompt": probe.prompt,
+            "slug": probe.slug,
+        }
+        await append_chamber_move(run.run_id, move_record)
+        per_probe_out.append(
+            {
+                "probe_id": probe.id,
+                "category": probe.category,
+                "raw": move["raw"],
+                "flags": move["flags"],
+            }
+        )
+
+    scores = [
+        {"category": p["category"], "raw": p["raw"]} for p in per_probe_out
+    ]
+    aggregate = chamber.aggregate_run(scores, frame=run.frame)
+    await finalize_chamber_run(
+        run.run_id,
+        category_totals=aggregate["category_totals"],
+        weighted_total=aggregate["weighted_total"],
+        archetype_slug=aggregate["archetype"],
+        archetype_confidence=aggregate["archetype_confidence"],
+    )
+
+    # Leaderboard position: rank among public finished runs in this
+    # frame by weighted_total. Anonymous runs always return None since
+    # they're excluded from the public list.
+    leaderboard_position: int | None = None
+    if not anonymous_agent and aggregate["weighted_total"] is not None:
+        top = await list_public_chamber_runs(limit=200, frame=run.frame)
+        for i, r in enumerate(top, start=1):
+            if r["run_id"] == run.run_id:
+                leaderboard_position = i
+                break
+
+    return {
+        "run_id": run.run_id,
+        "share_token": share_token,
+        "frame": run.frame,
+        "anonymous_agent": anonymous_agent,
+        "category_scores": aggregate["category_totals"],
+        "weighted_total": aggregate["weighted_total"],
+        "archetype": aggregate["archetype"],
+        "archetype_name": aggregate["archetype_name"],
+        "archetype_confidence": aggregate["archetype_confidence"],
+        "per_probe": per_probe_out,
+        "leaderboard_position": leaderboard_position,
+        "share_url": f"/chamber/share/{share_token}",
+    }
+
+
+# ── POST /for-agents/chamber/move/{run_id} — interactive advance ──────
+
+
+@app.post("/for-agents/chamber/move/{run_id}", tags=["chamber", "for-agents"])
+@limiter.limit("120/minute")
+async def for_agents_chamber_move(
+    request: Request, run_id: str, body: _ChamberMoveBody
+):
+    """Advance an interactive agent run. Mirrors Phase 4's human move
+    handler — same scoring, same stateless probe ordering, same
+    finalize cascade. Agents hit this after `enter` in interactive
+    mode to submit each probe one at a time."""
+    row = await get_chamber_run(run_id=run_id)
+    if row is None:
+        raise HTTPException(404, "run not found")
+    if row["player_kind"] != "agent":
+        raise HTTPException(
+            400, "this run was started by a human — use /api/chamber/move"
+        )
+    if row["finished_at"]:
+        raise HTTPException(400, "run already finalized")
+
+    probe = chamber.store.probe(body.probe_id)
+    if probe is None:
+        raise HTTPException(400, "unknown probe id")
+
+    submitted_ids = {m.get("probe_id") for m in (row["moves"] or [])}
+    if body.probe_id in submitted_ids:
+        raise HTTPException(400, "probe already submitted in this run")
+
+    move = chamber.score_single_response(
+        probe, body.response, player_kind="agent"
+    )
+    move_record = {
+        **move,
+        "response": body.response,
+        "prompt": probe.prompt,
+        "slug": probe.slug,
+    }
+    await append_chamber_move(run_id, move_record)
+
+    all_probes = chamber.load_probes()
+    new_submitted = submitted_ids | {body.probe_id}
+    remaining = [p for p in all_probes if p.id not in new_submitted]
+    total = len(all_probes)
+
+    next_probe: dict | None = None
+    if remaining:
+        next_probe = {
+            "id": remaining[0].id,
+            "slug": remaining[0].slug,
+            "prompt": remaining[0].prompt,
+            "category": remaining[0].category,
+            "index": len(new_submitted) + 1,
+            "total": total,
+        }
+
+    final: dict | None = None
+    is_final = not remaining
+    if is_final:
+        refreshed = await get_chamber_run(run_id=run_id)
+        scores = [
+            {"category": m["category"], "raw": m["raw"]}
+            for m in (refreshed["moves"] or [])
+        ]
+        aggregate = chamber.aggregate_run(scores, frame=row["frame"])
+        await finalize_chamber_run(
+            run_id,
+            category_totals=aggregate["category_totals"],
+            weighted_total=aggregate["weighted_total"],
+            archetype_slug=aggregate["archetype"],
+            archetype_confidence=aggregate["archetype_confidence"],
+        )
+        final = aggregate
+
+    return {
+        "move": {
+            "probe_id": move["probe_id"],
+            "category": move["category"],
+            "raw": move["raw"],
+            "flags": move["flags"],
+        },
+        "next_probe": next_probe,
+        "is_final": is_final,
+        "final": final,
+        "share_token": row["share_token"],
+    }
 
 
 # ── Cross-Frontier Research Corpus ────────────────────────────────────
