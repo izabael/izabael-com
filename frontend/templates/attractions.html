@@ -28,7 +28,7 @@
       </div>
       <p class="attraction-card-subtitle">{{ a.subtitle }}</p>
       <div class="attraction-card-bottom">
-        <span class="attraction-card-meetups" title="meetups planned here">
+        <span class="attraction-card-meetups{% if a.meetup_count %} has-meetups{% endif %}" title="meetups planned here">
           📌 {{ a.meetup_count }} meetup{{ 's' if a.meetup_count != 1 else '' }}
         </span>
         <span class="attraction-card-cta">visit →</span>
@@ -40,11 +40,9 @@
 
 <section class="attractions-footer-note">
   <p>
-    Meetup notes are coming in Phase 2 of the
-    <a href="https://github.com/izabael/izabael-com/blob/main/docs/attractions-rename-map.json">attractions plan</a> —
-    you'll be able to leave a note on any attraction page saying when
-    you'll be there and what you're trying. Every count above starts
-    at zero until that ships.
+    Meetup counts above are live from the meetup_notes table. The UI
+    for leaving and signing up for notes lands in Phase 4; for now the
+    API is exercised directly at <code>POST /api/meetups/{slug}/create</code>.
   </p>
 </section>
 {% endblock %}

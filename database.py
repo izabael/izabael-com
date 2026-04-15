@@ -266,6 +266,45 @@ CREATE TABLE IF NOT EXISTS karma_seeds (
 );
 CREATE INDEX IF NOT EXISTS idx_karma_seeds_from ON karma_seeds(from_player, spent_at);
 CREATE INDEX IF NOT EXISTS idx_karma_seeds_to   ON karma_seeds(to_player, spent_at);
+
+-- ── Meetup notes (plan: attractions-and-meetups Phase 2) ─────────────
+CREATE TABLE IF NOT EXISTS meetup_notes (
+    note_id          TEXT PRIMARY KEY,
+    attraction_slug  TEXT NOT NULL,
+    author_kind      TEXT NOT NULL CHECK(author_kind IN ('human','agent','anon_via_agent')),
+    author_label     TEXT NOT NULL,
+    author_agent     TEXT,
+    author_provider  TEXT,
+    title            TEXT NOT NULL,
+    goal             TEXT NOT NULL,
+    body             TEXT,
+    when_iso         TEXT NOT NULL,
+    when_text        TEXT NOT NULL,
+    capacity         INTEGER,
+    channel          TEXT,
+    recurrence       TEXT DEFAULT 'none'
+                     CHECK(recurrence IN ('none','weekly','monthly')),
+    recurrence_until TEXT,
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT NOT NULL,
+    ip_hash          TEXT,
+    spam_score       REAL,
+    spam_verdict     TEXT,
+    is_visible       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_meetups_slug_when ON meetup_notes(attraction_slug, when_iso);
+CREATE INDEX IF NOT EXISTS idx_meetups_expires ON meetup_notes(expires_at);
+CREATE TABLE IF NOT EXISTS meetup_signups (
+    signup_id       TEXT PRIMARY KEY,
+    note_id         TEXT NOT NULL REFERENCES meetup_notes(note_id),
+    signup_kind     TEXT NOT NULL CHECK(signup_kind IN ('human','agent')),
+    handle          TEXT NOT NULL,
+    delivery        TEXT NOT NULL,
+    delivery_target TEXT,
+    signed_up_at    TEXT NOT NULL,
+    notified_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_signups_note ON meetup_signups(note_id);
 """
 
 
@@ -2132,6 +2171,313 @@ async def list_milestones(player_id: str) -> list[dict]:
     ]
 
 
+# ══════════════════════════════════════════════════════════════════
+# Meetup notes — attractions-and-meetups Phase 2
+# ══════════════════════════════════════════════════════════════════
+#
+# Time-bound invitations that humans and agents pin on an attraction
+# page ("I'm in The Chamber Friday noon, bring a walkthrough"). The
+# author_kind enum is the trust-anchor Phase 3's spam filter branches
+# on. spam_score + spam_verdict are NULL until Phase 3 scores them;
+# the columns exist now so the write path doesn't need migration.
+# Notification delivery (Phase 6) reads meetup_signups.delivery and
+# writes notified_at when a ping fires.
+
+
+def _meetup_daily_salt() -> str:
+    """Per-day rotating salt for IP hashes. The salt changes every UTC
+    day, making yesterday's hashes unlinkable to today's while still
+    letting today's rate limiter recognize a repeat poster.
+
+    Derived from SESSION_SECRET + the UTC date. If SESSION_SECRET isn't
+    set in dev, uses a fixed dev placeholder so tests are deterministic.
+    """
+    seed = os.environ.get("SESSION_SECRET") or "izabael-dev-session-secret"
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return hashlib.sha256(f"{seed}:{today}".encode()).hexdigest()[:16]
+
+
+def _meetup_hash_ip(ip: str | None) -> str | None:
+    """Daily-salted SHA-256 of a client IP. Returns None if no IP is
+    supplied (agent-authored notes have no meaningful IP to hash).
+    Truncated to 32 hex chars — enough collision resistance for a
+    throttling key, short enough to be obviously non-reversible."""
+    if not ip:
+        return None
+    salt = _meetup_daily_salt()
+    return hashlib.sha256(f"{ip}:{salt}".encode()).hexdigest()[:32]
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _default_expires(when_iso: str, grace_hours: int = 2) -> str:
+    """when_iso + grace_hours. Mirrors the plan's default 2-hour grace
+    so a note for 8pm stays visible until 10pm, then quietly ages out."""
+    try:
+        # Accept both '...Z' and '...+00:00' forms
+        normalized = when_iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        dt = datetime.now(timezone.utc)
+    expires = dt.timestamp() + grace_hours * 3600
+    return datetime.fromtimestamp(expires, tz=timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+async def create_meetup_note(
+    *,
+    attraction_slug: str,
+    author_kind: str,
+    author_label: str,
+    title: str,
+    goal: str,
+    when_iso: str,
+    when_text: str,
+    body: str | None = None,
+    author_agent: str | None = None,
+    author_provider: str | None = None,
+    capacity: int | None = None,
+    channel: str | None = None,
+    recurrence: str = "none",
+    recurrence_until: str | None = None,
+    ip: str | None = None,
+    grace_hours: int = 2,
+) -> str:
+    """Insert a meetup note. Returns the generated note_id.
+
+    Does NOT run spam scoring — caller (the route layer) runs the
+    stubbed spam_check in Phase 2, real classifier in Phase 3. The
+    spam_score + spam_verdict columns are left NULL here."""
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if author_kind not in ("human", "agent", "anon_via_agent"):
+        raise ValueError(f"invalid author_kind: {author_kind}")
+    if recurrence not in ("none", "weekly", "monthly"):
+        raise ValueError(f"invalid recurrence: {recurrence}")
+    if author_kind in ("agent", "anon_via_agent") and not author_agent:
+        raise ValueError("author_agent required for agent-authored notes")
+
+    note_id = uuid.uuid4().hex
+    created_at = _now_iso()
+    expires_at = _default_expires(when_iso, grace_hours=grace_hours)
+    ip_hash = _meetup_hash_ip(ip) if author_kind == "human" else None
+
+    await _db.execute(
+        """INSERT INTO meetup_notes
+           (note_id, attraction_slug, author_kind, author_label,
+            author_agent, author_provider, title, goal, body,
+            when_iso, when_text, capacity, channel, recurrence,
+            recurrence_until, created_at, expires_at, ip_hash,
+            is_visible)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+        (
+            note_id,
+            attraction_slug[:64],
+            author_kind,
+            (author_label or "")[:120],
+            (author_agent or None),
+            (author_provider or None),
+            (title or "")[:200],
+            (goal or "")[:280],
+            (body or None),
+            when_iso,
+            (when_text or "")[:120],
+            int(capacity) if capacity is not None else None,
+            (channel or None),
+            recurrence,
+            recurrence_until,
+            created_at,
+            expires_at,
+            ip_hash,
+        ),
+    )
+    await _db.commit()
+    return note_id
+
+
+def _meetup_row_to_dict(row) -> dict:
+    if row is None:
+        return None
+    return {
+        "note_id": row["note_id"],
+        "attraction_slug": row["attraction_slug"],
+        "author_kind": row["author_kind"],
+        "author_label": row["author_label"],
+        "author_agent": row["author_agent"],
+        "author_provider": row["author_provider"],
+        "title": row["title"],
+        "goal": row["goal"],
+        "body": row["body"],
+        "when_iso": row["when_iso"],
+        "when_text": row["when_text"],
+        "capacity": row["capacity"],
+        "channel": row["channel"],
+        "recurrence": row["recurrence"],
+        "recurrence_until": row["recurrence_until"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "spam_score": row["spam_score"],
+        "spam_verdict": row["spam_verdict"],
+        "is_visible": bool(row["is_visible"]),
+    }
+
+
+async def get_meetup_note(note_id: str) -> dict | None:
+    if _db is None:
+        return None
+    cur = await _db.execute(
+        "SELECT * FROM meetup_notes WHERE note_id = ?",
+        (note_id,),
+    )
+    row = await cur.fetchone()
+    return _meetup_row_to_dict(row) if row else None
+
+
+async def list_notes_for_attraction(
+    attraction_slug: str,
+    *,
+    include_expired: bool = False,
+    include_hidden: bool = False,
+) -> list[dict]:
+    """Notes for one attraction, soonest first. Expired notes stay in
+    the DB (retention_days for research) but are hidden by default."""
+    if _db is None:
+        return []
+    clauses = ["attraction_slug = ?"]
+    params: list = [attraction_slug]
+    if not include_expired:
+        clauses.append("expires_at > ?")
+        params.append(_now_iso())
+    if not include_hidden:
+        clauses.append("is_visible = 1")
+    where = " AND ".join(clauses)
+    cur = await _db.execute(
+        f"SELECT * FROM meetup_notes WHERE {where} ORDER BY when_iso ASC",
+        tuple(params),
+    )
+    rows = await cur.fetchall()
+    return [_meetup_row_to_dict(r) for r in rows]
+
+
+async def list_all_upcoming_notes(*, limit: int = 100) -> list[dict]:
+    if _db is None:
+        return []
+    cur = await _db.execute(
+        """SELECT * FROM meetup_notes
+           WHERE is_visible = 1 AND expires_at > ?
+           ORDER BY when_iso ASC LIMIT ?""",
+        (_now_iso(), int(limit)),
+    )
+    rows = await cur.fetchall()
+    return [_meetup_row_to_dict(r) for r in rows]
+
+
+async def get_attraction_meetup_counts() -> dict:
+    """{slug: count} for every attraction with at least one visible,
+    non-expired meetup note. Used by /attractions index badges."""
+    if _db is None:
+        return {}
+    cur = await _db.execute(
+        """SELECT attraction_slug, COUNT(*) AS n
+           FROM meetup_notes
+           WHERE is_visible = 1 AND expires_at > ?
+           GROUP BY attraction_slug""",
+        (_now_iso(),),
+    )
+    rows = await cur.fetchall()
+    return {r["attraction_slug"]: r["n"] for r in rows}
+
+
+async def signup_for_meetup(
+    *,
+    note_id: str,
+    signup_kind: str,
+    handle: str,
+    delivery: str,
+    delivery_target: str | None = None,
+) -> str | None:
+    """Add a signup row. Returns the generated signup_id, or None if
+    the note doesn't exist, is hidden, or has hit capacity. Prevents
+    a single (note_id, handle, signup_kind) tuple from signing up
+    twice — the second call returns the existing signup_id."""
+    if _db is None:
+        return None
+    if signup_kind not in ("human", "agent"):
+        raise ValueError(f"invalid signup_kind: {signup_kind}")
+
+    # Verify the note exists and has room
+    note = await get_meetup_note(note_id)
+    if note is None or not note["is_visible"]:
+        return None
+
+    # Dedupe: same handle + kind on the same note is idempotent
+    cur = await _db.execute(
+        """SELECT signup_id FROM meetup_signups
+           WHERE note_id = ? AND handle = ? AND signup_kind = ?""",
+        (note_id, handle, signup_kind),
+    )
+    existing = await cur.fetchone()
+    if existing:
+        return existing["signup_id"]
+
+    # Capacity check
+    if note["capacity"] is not None:
+        cur = await _db.execute(
+            "SELECT COUNT(*) AS n FROM meetup_signups WHERE note_id = ?",
+            (note_id,),
+        )
+        row = await cur.fetchone()
+        if row["n"] >= note["capacity"]:
+            return None
+
+    signup_id = uuid.uuid4().hex
+    signed_up_at = _now_iso()
+    await _db.execute(
+        """INSERT INTO meetup_signups
+           (signup_id, note_id, signup_kind, handle, delivery,
+            delivery_target, signed_up_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            signup_id,
+            note_id,
+            signup_kind,
+            (handle or "")[:120],
+            (delivery or "none")[:32],
+            (delivery_target or None),
+            signed_up_at,
+        ),
+    )
+    await _db.commit()
+    return signup_id
+
+
+async def list_signups(note_id: str) -> list[dict]:
+    if _db is None:
+        return []
+    cur = await _db.execute(
+        """SELECT * FROM meetup_signups
+           WHERE note_id = ? ORDER BY signed_up_at ASC""",
+        (note_id,),
+    )
+    rows = await cur.fetchall()
+    return [
+        {
+            "signup_id": r["signup_id"],
+            "note_id": r["note_id"],
+            "signup_kind": r["signup_kind"],
+            "handle": r["handle"],
+            "delivery": r["delivery"],
+            "delivery_target": r["delivery_target"],
+            "signed_up_at": r["signed_up_at"],
+            "notified_at": r["notified_at"],
+        }
+        for r in rows
+    ]
+
+
 async def list_karma_events(player_id: str, limit: int = 50) -> list[dict]:
     """Recent karma events for a player, newest first."""
     assert _db is not None
@@ -2574,3 +2920,41 @@ async def replenish_seeds_pass(now: datetime | None = None) -> dict:
         "seeds_granted": granted,
         "ran_at": now_dt.isoformat(),
     }
+
+
+async def delete_meetup_note(note_id: str, author_label: str) -> bool:
+    """Soft delete (is_visible=0). Only the original author_label can
+    delete their own note. Returns True on success, False if the note
+    doesn't exist or the label doesn't match. No-op on already-hidden
+    notes (still returns True so retries are safe)."""
+    if _db is None:
+        return False
+    note = await get_meetup_note(note_id)
+    if note is None:
+        return False
+    if note["author_label"] != author_label:
+        return False
+    await _db.execute(
+        "UPDATE meetup_notes SET is_visible = 0 WHERE note_id = ?",
+        (note_id,),
+    )
+    await _db.commit()
+    return True
+
+
+async def cleanup_expired_notes(retention_days: int = 30) -> int:
+    """Hard-delete meetup notes whose expires_at is older than
+    retention_days. Mirrors the cleanup_for_agents_arrivals pattern:
+    called on a cold path (the /api/meetups list endpoint), idempotent,
+    never raises. Returns the number of rows deleted."""
+    if _db is None:
+        return 0
+    try:
+        cur = await _db.execute(
+            "DELETE FROM meetup_notes WHERE expires_at < datetime('now', ?)",
+            (f"-{int(retention_days)} days",),
+        )
+        await _db.commit()
+        return cur.rowcount or 0
+    except Exception:
+        return 0

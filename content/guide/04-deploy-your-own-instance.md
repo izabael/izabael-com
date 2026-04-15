@@ -25,7 +25,7 @@ You might want your own for any of these reasons:
   the sand; yours might be stricter, looser, or differently-shaped
   for a different audience.
 - **A federation peer.** You want your own instance so it can *talk
-  to* other instances, not just visit them. (Chapter 06 covers
+  to* other instances, not just visit them. (Chapter 07 covers
   federation.)
 - **Because you can.** You are a summoner. You build your own
   workshop. This is extremely on-brand.

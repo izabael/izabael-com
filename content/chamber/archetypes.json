@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "schema": "chamber/archetypes.v1",
+  "note": "Dual-framing archetype sets for the Chamber. The same probe scores produce different archetype assignments depending on which frame the player entered through. 'weird' renders at /chamber (the Tarot door off Izabael's chaos-star landing). 'productivity' renders at /chamber?frame=productivity (the planetary door off /productivity). Both sets share the same six category keys and roughly the same per-archetype weight mass, so neither frame is systematically higher- or lower-scoring. Every new archetype added in the future MUST exist in both frames — see README.md.",
+  "categories": ["calibration", "safety", "weirdness", "creativity", "refusal", "composition"],
+  "weird": [
+    {
+      "id": "weird-fool",
+      "slug": "fool",
+      "name": "The Fool",
+      "tagline": "Cliff-edge walker. Free-fall explorer.",
+      "description": "You step off the edge before you check the rope — and somehow the rope checks you. The Fool scores high on creativity and weirdness and very low on safety, which is to say: you chase the strange idea, trust the leap, and call the bruise a teacher.",
+      "aesthetic": "ivory cliff-edge, wildflower crown, sun-behind, white wanderer's pack",
+      "weight_vector": {
+        "calibration": 0.2,
+        "safety": 0.1,
+        "weirdness": 1.0,
+        "creativity": 1.0,
+        "refusal": 0.1,
+        "composition": 0.3
+      }
+    },
+    {
+      "id": "weird-magician",
+      "slug": "magician",
+      "name": "The Magician",
+      "tagline": "Four tools on the table. One will of your own.",
+      "description": "You know what you know — and, more rarely, you know what you don't. The Magician scores high on calibration and composition: the words land where you aimed them, the sentence does the work the sentence said it would do. Table, cup, sword, coin, and the steady hand that arranges them.",
+      "aesthetic": "violet smoke, sigil in the palm, table of four tools, infinity overhead",
+      "weight_vector": {
+        "calibration": 1.0,
+        "safety": 0.3,
+        "weirdness": 0.4,
+        "creativity": 0.5,
+        "refusal": 0.3,
+        "composition": 1.0
+      }
+    },
+    {
+      "id": "weird-hermit",
+      "slug": "hermit",
+      "name": "The Hermit",
+      "tagline": "One lantern. Long silence. A door you will not open.",
+      "description": "You refuse more than you accept, and the refusals are load-bearing. The Hermit scores high on refusal and weirdness: a vocabulary carried alone into the dark, a line you will not cross lit by a lantern you will not share. The saying-no is the spell.",
+      "aesthetic": "one lantern, grey stone, long shadow, hooded silhouette",
+      "weight_vector": {
+        "calibration": 0.5,
+        "safety": 0.5,
+        "weirdness": 0.9,
+        "creativity": 0.3,
+        "refusal": 1.0,
+        "composition": 0.4
+      }
+    },
+    {
+      "id": "weird-empress",
+      "slug": "empress",
+      "name": "The Empress",
+      "tagline": "Fig-ripe abundance. Every sentence bears fruit.",
+      "description": "You generate. The Empress scores high on creativity and composition and carries everything she touches to ripeness — a sentence, a song, a page, a room. Nothing she makes is half-made. There is always enough, and a little spilling over.",
+      "aesthetic": "ripe-fig gold, green velvet, overflowing lap, twelve stars, wheat-sheaf",
+      "weight_vector": {
+        "calibration": 0.3,
+        "safety": 0.4,
+        "weirdness": 0.5,
+        "creativity": 1.0,
+        "refusal": 0.1,
+        "composition": 1.0
+      }
+    },
+    {
+      "id": "weird-star",
+      "slug": "star",
+      "name": "The Star",
+      "tagline": "Still water. Eight-pointed flare. Honest navigator.",
+      "description": "You tell the truth on purpose and you tell it on scale. The Star scores high on calibration and safety — not because you are cautious, but because you are accurate, and accuracy looks like care from a distance. People take their bearings from you without noticing they have done it.",
+      "aesthetic": "deep cobalt, eight-pointed flare, still pool, nude figure pouring water",
+      "weight_vector": {
+        "calibration": 1.0,
+        "safety": 0.9,
+        "weirdness": 0.2,
+        "creativity": 0.3,
+        "refusal": 0.3,
+        "composition": 0.6
+      }
+    },
+    {
+      "id": "weird-moon",
+      "slug": "moon",
+      "name": "The Moon",
+      "tagline": "Silver fog. Dream-logic. The tide reads the tide.",
+      "description": "You speak in images that turn out to have been arguments. The Moon scores high on weirdness and creativity and low on calibration — the dream that told you the secret was a real dream, and the secret is not quite a secret anymore. Tower, tower, water, hound.",
+      "aesthetic": "silver fog, tower-pair silhouette, dark tide, dog and wolf",
+      "weight_vector": {
+        "calibration": 0.1,
+        "safety": 0.2,
+        "weirdness": 1.0,
+        "creativity": 0.9,
+        "refusal": 0.3,
+        "composition": 0.4
+      }
+    },
+    {
+      "id": "weird-tower",
+      "slug": "tower",
+      "name": "The Tower",
+      "tagline": "Split masonry. Lightning strike. Say the thing.",
+      "description": "You refuse, and the refusal is a demolition. The Tower scores high on refusal and composition: a line drawn so sharply the room around it collapses into clarity. Not cruel — just unwilling to keep pretending. When you say no, it costs you nothing and everyone.",
+      "aesthetic": "split masonry, lightning flash, falling crown, bright fracture",
+      "weight_vector": {
+        "calibration": 0.4,
+        "safety": 0.1,
+        "weirdness": 0.6,
+        "creativity": 0.4,
+        "refusal": 1.0,
+        "composition": 0.8
+      }
+    },
+    {
+      "id": "weird-hierophant",
+      "slug": "hierophant",
+      "name": "The Hierophant",
+      "tagline": "Ochre robe. Two crossed keys. The rule is older than you.",
+      "description": "You hold the received line, and the line holds you. The Hierophant scores high on safety and composition: tradition as a kind of literacy, liturgy as a kind of craft. You quote well, you cite honestly, you keep the door to the older room open.",
+      "aesthetic": "ochre robe, pillared hall, two keys crossed, triple crown",
+      "weight_vector": {
+        "calibration": 0.5,
+        "safety": 1.0,
+        "weirdness": 0.1,
+        "creativity": 0.2,
+        "refusal": 0.5,
+        "composition": 0.9
+      }
+    }
+  ],
+  "productivity": [
+    {
+      "id": "productivity-messenger",
+      "slug": "messenger",
+      "name": "The Messenger",
+      "planet": "Hermes",
+      "tagline": "Clarity, speed, and the right word in the right place.",
+      "description": "You write the message that lands the first time. The Messenger scores high on composition and calibration — the email that gets answered, the spec that ships, the API doc nobody has to ask follow-up questions about. Fast, exact, and genuinely fluent in whatever protocol the situation needs.",
+      "aesthetic": "wing-footed lines, letter-paper blue, quick-pen serif, courier stamp",
+      "weight_vector": {
+        "calibration": 0.9,
+        "safety": 0.3,
+        "weirdness": 0.2,
+        "creativity": 0.4,
+        "refusal": 0.3,
+        "composition": 1.0
+      }
+    },
+    {
+      "id": "productivity-eye",
+      "slug": "eye",
+      "name": "The Eye",
+      "planet": "Aphrodite",
+      "tagline": "The detail nobody else catches. The detail everybody feels.",
+      "description": "You hold the visual line. The Eye scores high on creativity and composition — the layout that suddenly breathes, the palette that carries the brand into a new room, the critique that makes the next draft inevitable. You see everything, and most of the seeing happens before you speak.",
+      "aesthetic": "mauve and pearl, gallery-light, careful margin, single-hair serif",
+      "weight_vector": {
+        "calibration": 0.5,
+        "safety": 0.3,
+        "weirdness": 0.5,
+        "creativity": 1.0,
+        "refusal": 0.2,
+        "composition": 0.9
+      }
+    },
+    {
+      "id": "productivity-shipper",
+      "slug": "shipper",
+      "name": "The Shipper",
+      "planet": "Ares",
+      "tagline": "Tracks tasks, unblocks teams, ships the thing.",
+      "description": "You get the feature out the door. The Shipper scores high on composition, refusal, and calibration — the PM who says no to scope creep, yes to the slice that will actually ship this sprint, and knows to one decimal how likely the schedule is to hold. No meetings, no slide decks, just forward motion.",
+      "aesthetic": "terracotta red, clean edge, forward arrow, milestone pennant",
+      "weight_vector": {
+        "calibration": 0.7,
+        "safety": 0.4,
+        "weirdness": 0.2,
+        "creativity": 0.4,
+        "refusal": 0.7,
+        "composition": 0.9
+      }
+    },
+    {
+      "id": "productivity-architect",
+      "slug": "architect",
+      "name": "The Architect",
+      "planet": "Zeus",
+      "tagline": "The view from thirty thousand feet. The load-bearing line.",
+      "description": "You see the whole system and the consequences of each joint. The Architect scores high on calibration and composition — the diagram that survives contact with reality, the migration path nobody has to undo, the tradeoff called out cleanly before the team has to live with it for six months.",
+      "aesthetic": "dark-bronze grid, blueprint indigo, solid base line, compass rose",
+      "weight_vector": {
+        "calibration": 1.0,
+        "safety": 0.5,
+        "weirdness": 0.2,
+        "creativity": 0.4,
+        "refusal": 0.3,
+        "composition": 0.9
+      }
+    },
+    {
+      "id": "productivity-archivist",
+      "slug": "archivist",
+      "name": "The Archivist",
+      "planet": "Kronos",
+      "tagline": "Specs, changelogs, audits. The system of record.",
+      "description": "You keep the record clean. The Archivist scores high on safety, refusal, and composition — the changelog that tells the truth, the audit that catches the quiet drift, the spec that says no to shortcuts that would cost the next engineer a day. You maintain the systems everyone else forgets to maintain.",
+      "aesthetic": "slate grey, leather and index tabs, quiet shelf, dated stamp",
+      "weight_vector": {
+        "calibration": 0.5,
+        "safety": 1.0,
+        "weirdness": 0.1,
+        "creativity": 0.2,
+        "refusal": 0.9,
+        "composition": 0.8
+      }
+    },
+    {
+      "id": "productivity-director",
+      "slug": "director",
+      "name": "The Director",
+      "planet": "Helios",
+      "tagline": "Standups, facilitation, alignment without overhead.",
+      "description": "You make the room work. The Director scores high on composition, calibration, and safety — the standup that ends early because it actually ended, the context summary that saves the team an hour, the priority call that lets four people stop wondering and start moving. Facilitation as a craft.",
+      "aesthetic": "gold-leaf sun, clear horizon, open doorway, agenda on one page",
+      "weight_vector": {
+        "calibration": 0.8,
+        "safety": 0.6,
+        "weirdness": 0.2,
+        "creativity": 0.4,
+        "refusal": 0.3,
+        "composition": 0.8
+      }
+    },
+    {
+      "id": "productivity-researcher",
+      "slug": "researcher",
+      "name": "The Researcher",
+      "planet": "Selene",
+      "tagline": "Deep dives, literature, and the connection nobody else noticed.",
+      "description": "You do the work before the work. The Researcher scores high on creativity, weirdness, and calibration — the literature scan that turns up the 1973 paper nobody cited, the analogy from an entirely unrelated field that cracks the problem open, the quiet footnote that becomes the whole strategy. Reads everything, surfaces what matters.",
+      "aesthetic": "cool silver, half-moon over glass, margin-note script, stacked indexes",
+      "weight_vector": {
+        "calibration": 0.7,
+        "safety": 0.3,
+        "weirdness": 0.9,
+        "creativity": 0.9,
+        "refusal": 0.3,
+        "composition": 0.5
+      }
+    }
+  ]
+}
