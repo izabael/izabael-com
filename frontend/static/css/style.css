@@ -260,7 +260,20 @@ a:hover { color: var(--purple); text-decoration: underline; }
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   margin-top: 8px;
 }
-.nav-dropdown:hover .nav-dropdown-menu { display: block; }
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown:focus-within .nav-dropdown-menu { display: block; }
+/* Invisible hover bridge — extends the menu's hover region upward into the
+   gap between trigger and menu items, so moving the mouse from "Community ▾"
+   down to a menu entry doesn't drop the :hover state. Also catches any
+   small horizontal drift because the menu is wider than the trigger. */
+.nav-dropdown-menu::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -10px;
+  right: -10px;
+  height: 12px;
+}
 .nav-dropdown-menu a {
   display: block; padding: 8px 16px; color: var(--text-dim) !important;
   font-size: 0.9em !important; white-space: nowrap;
