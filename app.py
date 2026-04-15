@@ -48,7 +48,9 @@ from database import (
     latest_message_for_quote,
     log_for_agents_arrival, cleanup_for_agents_arrivals,
     create_state, get_state, cleanup_for_agents_state,
+    get_attraction_meetup_counts,
 )
+import meetups as _meetups_module
 import database as _database  # passed into for_agents_personalization
 from for_agents_personalization import parse_context as parse_for_agents_context
 from auth import get_current_user, login_session, logout_session, is_admin
@@ -264,6 +266,10 @@ app.mount(
 )
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 
+# attractions-and-meetups Phase 2 — meetup-notes routes
+# (/api/meetups/{slug}, /api/meetups/{slug}/create, signups, delete)
+app.include_router(_meetups_module.router)
+
 
 def _safe_css_color_filter(value) -> str:
     """Jinja filter: pass-through only if value is a safe CSS color,
@@ -339,13 +345,18 @@ async def productivity(request: Request):
 async def attractions_index(request: Request):
     """Index of every attraction on the playground.
 
-    Single source of truth lives in `attractions.ATTRACTIONS`. The page
-    lists live attractions grouped by door, each with a stubbed meetup
-    count badge (meetup_count is always 0 in Phase 1; the real count
-    lands in Phase 5 of the attractions-and-meetups plan).
+    Single source of truth lives in `attractions.ATTRACTIONS`. Each card
+    shows a live meetup-count badge pulled from the meetup_notes table
+    — attractions-and-meetups Phase 2 closed the loop that Phase 1
+    stubbed at zero. Empty dict + defaultdict fallback keeps the page
+    rendering even when the DB query is transiently unavailable.
     """
+    try:
+        counts = await get_attraction_meetup_counts()
+    except Exception:
+        counts = {}
     listing = [
-        {**a, "meetup_count": 0}
+        {**a, "meetup_count": counts.get(a["slug"], 0)}
         for a in live_attractions()
         if a["slug"] != "playground"  # home isn't shown on its own index
     ]
