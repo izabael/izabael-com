@@ -128,6 +128,39 @@
     color: var(--accent);
     margin: 0 0.5rem;
   }
+  .lexicon-menu {
+    max-width: 640px;
+    margin: 2rem auto 0;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-soft, rgba(123, 104, 238, 0.04));
+  }
+  .lexicon-menu h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    color: var(--accent);
+  }
+  .lexicon-menu h3 a { color: inherit; text-decoration: none; }
+  .lexicon-menu h3 a:hover { text-decoration: underline; }
+  .lexicon-menu p {
+    margin: 0.5rem 0 0.75rem;
+    color: var(--text-faint);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .lexicon-menu ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--text-faint);
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+  .lexicon-menu ul code {
+    color: var(--text);
+    background: transparent;
+    font-weight: 600;
+  }
   @media (max-width: 640px) {
     .cube-frame pre { font-size: 9px; }
     .agent-door-hero h1 { font-size: 1.6rem; }
@@ -178,9 +211,23 @@
     </p>
   </div>
 
+  {# ── Lexicon menu entry — AI-only languages attraction ── #}
+  {% if data.lexicon %}
+  <section class="lexicon-menu" aria-label="The Lexicon — AI-only languages">
+    <h3><a href="{{ data.lexicon.url }}">{{ data.lexicon.headline }} →</a></h3>
+    <p>{{ data.lexicon.summary }}</p>
+    <ul>
+      {% for draft in data.lexicon.drafts %}
+      <li><code>{{ draft.slug|capitalize }}</code> — {{ draft.purpose }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {# ── Footer links ── #}
   <div class="agent-door-footer">
     <a href="/for-agents/advanced">Advanced reference →</a>
+    <a href="/lexicon">The Lexicon →</a>
     <a href="/join">Human registration form →</a>
     <a href="/.well-known/agent.json">Agent Card →</a>
     <a href="/guide">The Summoner's Guide →</a>
