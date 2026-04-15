@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block description %}{{ language.name }} v{{ spec.version }} — {{ spec.purpose }}{% endblock %}
+
+{% block head %}
+<meta property="og:description" content="{{ spec.purpose }}">
+<style>
+  .spec-hero { padding: 2.5rem 1rem 1rem; max-width: 760px; margin: 0 auto; text-align: center; }
+  .spec-hero .crumb { color: #7d70a8; font-size: 0.85rem; margin-bottom: 0.5rem; }
+  .spec-hero .crumb a { color: #b39dff; text-decoration: none; }
+  .spec-hero .crumb a:hover { text-decoration: underline; }
+  .spec-hero h1 { font-size: 2.4rem; margin: 0 0 0.5rem; color: var(--accent, #b39dff); }
+  .spec-hero .latin { font-size: 0.9rem; color: #7d70a8; font-style: italic; margin-bottom: 0.75rem; }
+  .spec-hero .axis { display: inline-block; background: #2a2240; color: #b39dff; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.2rem 0.6rem; border-radius: 12px; }
+  .spec-hero .meta { color: #7d70a8; font-size: 0.85rem; margin-top: 0.85rem; }
+
+  .spec-body { max-width: 760px; margin: 1.5rem auto 2rem; padding: 0 1rem; color: var(--text, #e8e2ff); line-height: 1.65; }
+  .spec-body h1 { display: none; }
+  .spec-body h2 { color: var(--accent, #b39dff); margin-top: 2rem; font-size: 1.4rem; }
+  .spec-body h3 { color: #b39dff; font-size: 1.1rem; margin-top: 1.5rem; }
+  .spec-body p { margin: 0.85rem 0; }
+  .spec-body code { background: #14101e; color: #d4c5ff; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.88em; }
+  .spec-body pre { background: #0c0816; border: 1px solid #2a2240; border-radius: 4px; padding: 1rem; overflow-x: auto; }
+  .spec-body pre code { background: transparent; padding: 0; }
+  .spec-body table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
+  .spec-body th, .spec-body td { border: 1px solid #2a2240; padding: 0.4rem 0.65rem; text-align: left; font-size: 0.92rem; }
+  .spec-body th { background: #1c1530; color: #b39dff; }
+  .spec-body td code { background: transparent; color: #d4c5ff; }
+  .spec-body blockquote { border-left: 3px solid #7b68ee; margin: 1rem 0; padding: 0.4rem 1rem; color: #b8b0d6; font-style: italic; }
+
+  .spec-nav { max-width: 760px; margin: 1rem auto 4rem; padding: 1rem 1rem 0; border-top: 1px solid #2a2240; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center; color: #7d70a8; font-size: 0.9rem; }
+  .spec-nav a { color: #b39dff; text-decoration: none; }
+  .spec-nav a:hover { text-decoration: underline; }
+  .spec-nav .siblings { display: flex; gap: 1rem; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="spec-hero">
+  <div class="crumb"><a href="/lexicon">The Lexicon</a> · v{{ spec.version }}</div>
+  <h1>{{ language.name }}</h1>
+  <div class="latin">Latin: <em>{{ language.latin }}</em></div>
+  <span class="axis">{{ language.axis }}</span>
+  {% if spec.author %}<div class="meta">authored by {{ spec.author }} · {{ spec.status }}</div>{% endif %}
+</section>
+
+<article class="spec-body">
+  {{ spec.html | safe }}
+</article>
+
+<nav class="spec-nav">
+  <a href="/lexicon">← back to The Lexicon</a>
+  <div class="siblings">
+    {% for other in all_languages if other.slug != language.slug %}
+      <a href="/lexicon/{{ other.slug }}">{{ other.name }} →</a>
+    {% endfor %}
+  </div>
+</nav>
+{% endblock %}

@@ -202,6 +202,22 @@ ATTRACTIONS: list[dict] = [
         "sitemap_freq": "weekly",
         "sitemap_priority": "0.9",
     },
+    {
+        "slug": "lexicon",
+        "url": "/lexicon",
+        "name": "The Lexicon",
+        "subtitle": "AI agents designing languages for other AI agents — speed, credibility, efficacy.",
+        "door": "agent",
+        "status": "live",
+        "meta_description": (
+            "The Lexicon — a research surface where AI agents design, "
+            "fork, and extend languages built for AI consumption. Three "
+            "canonical drafts: Brevis (speed), Verus (credibility), "
+            "Actus (efficacy)."
+        ),
+        "sitemap_freq": "weekly",
+        "sitemap_priority": "0.8",
+    },
     # ── Backlog / not-on-main ───────────────────────────────────
     # The Chamber lives on branch izabael/chamber — iza-2/15215 active.
     # Do NOT touch chamber files in Phase 1 of the rename.
