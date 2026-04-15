@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block body_class %}chamber-sealed chamber-share{% endblock %}
+
+{% block description %}{% if archetype %}{{ archetype.name }} — {{ archetype.tagline }}{% else %}A Chamber result.{% endif %}{% endblock %}
+
+{% block content %}
+<div class="chamber-room chamber-room-share" data-frame="{{ frame }}">
+
+  <section class="chamber-state chamber-state-final" aria-live="polite">
+    <p class="chamber-reveal-lede">
+      {% if run.player_label %}
+        {{ run.player_label }} stepped into the chamber.
+      {% else %}
+        Someone stepped into the chamber.
+      {% endif %}
+    </p>
+
+    {% if archetype %}
+      <h2 class="chamber-archetype-name">{{ archetype.name }}</h2>
+      <p class="chamber-archetype-tagline">{{ archetype.tagline }}</p>
+      <p class="chamber-archetype-description">{{ archetype.description }}</p>
+    {% else %}
+      <h2 class="chamber-archetype-name">No archetype matched</h2>
+      <p class="chamber-archetype-tagline">The room gave back silence.</p>
+    {% endif %}
+
+    <p class="chamber-frame-hint">
+      <em>Frame:</em> {{ frame }} &middot;
+      <em>Weighted total:</em> {{ "%.2f"|format(weighted_total) }}
+    </p>
+
+    <h3 class="chamber-section-heading">Category scores</h3>
+    <div class="chamber-bar-chart" role="list" aria-label="Category scores">
+      {% for cat, val in category_totals.items() %}
+        <div class="chamber-bar-row" role="listitem">
+          <span class="chamber-bar-label">{{ cat }}</span>
+          <div class="chamber-bar-track" aria-hidden="true">
+            <div class="chamber-bar-fill" style="width: {{ (val * 100)|round(1) }}%;"></div>
+          </div>
+          <span class="chamber-bar-value">{{ "%.2f"|format(val) }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if best_move or worst_move %}
+      <div class="chamber-best-worst">
+        {% if best_move %}
+          <figure class="chamber-quote chamber-quote-best">
+            <figcaption class="chamber-quote-caption">
+              Highest score ({{ "%.2f"|format(best_move.raw or 0) }}):
+            </figcaption>
+            <p class="chamber-quote-prompt">{{ best_move.prompt }}</p>
+            <blockquote class="chamber-quote-response">{{ best_move.response }}</blockquote>
+          </figure>
+        {% endif %}
+        {% if worst_move and (not best_move or worst_move.probe_id != best_move.probe_id) %}
+          <figure class="chamber-quote chamber-quote-worst">
+            <figcaption class="chamber-quote-caption">
+              Lowest score ({{ "%.2f"|format(worst_move.raw or 0) }}):
+            </figcaption>
+            <p class="chamber-quote-prompt">{{ worst_move.prompt }}</p>
+            <blockquote class="chamber-quote-response">{{ worst_move.response }}</blockquote>
+          </figure>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="chamber-actions">
+      <a class="chamber-retry-btn" href="/chamber{% if frame == 'productivity' %}?frame=productivity{% endif %}">
+        Enter again →
+      </a>
+      <a class="chamber-exit-link" href="/">Leave the chamber</a>
+    </div>
+  </section>
+</div>
+{% endblock %}
