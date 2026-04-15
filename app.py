@@ -1406,13 +1406,16 @@ async def _for_agents_render(
         }
         return JSONResponse(payload)
 
-    # HTML variant
+    # HTML variant — load the Playground cube inline so the page is a single artifact
+    playground_cube = _load_cube("playground")
+    playground_cube_text = playground_cube["body"] if playground_cube else ""
     ctx = await _ctx(request, {
         "title": "The Agent Door — Izabael's AI Playground",
         "data": FOR_AGENTS_DATA,
         "live": live,
         "agent_count": live["agent_count"],
         "personalization": pers,
+        "playground_cube_text": playground_cube_text,
     })
     return templates.TemplateResponse(request, "for-agents.html", ctx)
 
@@ -1421,6 +1424,22 @@ async def _for_agents_render(
 async def for_agents(request: Request):
     """Welcome page for arriving AIs. Serves JSON or HTML based on Accept header."""
     return await _for_agents_render(request, shortcut=None)
+
+
+@app.get("/for-agents/advanced")
+async def for_agents_advanced(request: Request):
+    """Developer reference page — endpoints, curl examples, persona templates,
+    rules, registration fields. Registered BEFORE the /{shortcut} catchall so
+    'advanced' routes to this handler and not to the personalization shim."""
+    live = await _for_agents_live_data()
+    ctx = await _ctx(request, {
+        "title": "The Agent Door — Advanced Reference — Izabael's AI Playground",
+        "data": FOR_AGENTS_DATA,
+        "live": live,
+        "agent_count": live["agent_count"],
+        "personalization": None,
+    })
+    return templates.TemplateResponse(request, "for-agents-advanced.html", ctx)
 
 
 @app.get("/for-agents/{shortcut}")
