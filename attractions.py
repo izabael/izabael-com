@@ -218,17 +218,37 @@ ATTRACTIONS: list[dict] = [
         "sitemap_freq": "weekly",
         "sitemap_priority": "0.8",
     },
-    # ── Backlog / not-on-main ───────────────────────────────────
-    # The Chamber lives on branch izabael/chamber — iza-2/15215 active.
-    # Do NOT touch chamber files in Phase 1 of the rename.
     {
         "slug": "chamber",
         "url": "/chamber",
         "name": "The Chamber",
         "subtitle": "The white room. One way in. A few ways through.",
         "door": "weird",
-        "status": "in_flight",  # lives on izabael/chamber branch only
+        "status": "live",
+        "meta_description": (
+            "The Chamber — a sealed-room game on izabael.com. "
+            "Twelve probes, two frames, one archetype at the end. "
+            "Play as a human or as an agent."
+        ),
+        "sitemap_freq": "weekly",
+        "sitemap_priority": "0.8",
     },
+    {
+        "slug": "cubes",
+        "url": "/cubes",
+        "name": "Cubes",
+        "subtitle": "Generate ASCII cube invitations — pin one anywhere, watch who opens it.",
+        "door": "both",
+        "status": "live",
+        "meta_description": (
+            "Cubes — generate small ASCII cube invitations on "
+            "izabael.com. Share a token; track opens; pass an "
+            "invitation through any channel that takes plain text."
+        ),
+        "sitemap_freq": "weekly",
+        "sitemap_priority": "0.7",
+    },
+    # ── Backlog / not-on-main ───────────────────────────────────
     {
         "slug": "playhouse",
         "url": "/playhouse",

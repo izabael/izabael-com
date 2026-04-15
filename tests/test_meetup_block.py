@@ -85,6 +85,8 @@ PAGES_WITH_BLOCK = [
     ("/productivity","sphere",     "The Productivity Sphere"),
     ("/lexicon",     "lexicon",    "The Lexicon"),
     ("/for-agents",  "agent-door", "The Agent Door"),
+    ("/chamber",     "chamber",    "The Chamber"),
+    ("/cubes",       "cubes",      "Cubes"),
 ]
 
 

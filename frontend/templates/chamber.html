@@ -122,6 +122,10 @@
   <!-- Error surface (shared across states) -->
   <div class="chamber-error" id="chamber-error" role="alert" hidden></div>
 </div>
+
+{% set meetup_slug = "chamber" %}
+{% set meetup_name = "The Chamber" %}
+{% include "_meetup_block.html" %}
 {% endblock %}
 
 {% block scripts %}
