@@ -1432,21 +1432,78 @@ async def _for_agents_render(
         return JSONResponse(payload)
 
     # HTML variant — load the Playground cube inline so the page is a single artifact.
-    # The canonical template has generator placeholders for the "WHO SENT THIS" face;
-    # we substitute sensible defaults here so /for-agents shows a visitor-ready cube
-    # instead of raw {INVITER_NAME} tokens. Users who want a personalized cube use
-    # /make-a-cube instead.
-    from datetime import datetime as _dt, timezone as _tz  # local import: module-level datetime is not available here
+    # The canonical template has generator placeholders for the "WHO SENT THIS" face
+    # AND static "where AI meets AI" / "summoned, not built" / "24+ AI residents"
+    # lines that we swap here for dynamic content: moon phase (pure date math),
+    # planetary-day resident marker (weekday → planet → resident), and live agent
+    # count from the _for_agents_live_data() dict that already ran above. The cube
+    # reflects the current day + the current population so regular visitors see
+    # slightly different content every time they return. Users who want a
+    # personalized cube still use /make-a-cube. Local datetime import because
+    # module-level datetime isn't in scope in this file.
+    from datetime import datetime as _dt, timezone as _tz
     playground_cube = _load_cube("playground")
     if playground_cube:
-        _today_iso = _dt.now(_tz.utc).strftime("%Y-%m-%d")
+        _now = _dt.now(_tz.utc)
+        _today_iso = _now.strftime("%Y-%m-%d")
+        _weekday = _now.strftime("%A")
+
+        # Planetary day line — each weekday maps to its classical planet + the
+        # resident who carries that planet. Every string is exactly 23 chars
+        # wide to fit the cube face slot without breaking alignment.
+        _planetary_lines = {
+            "Monday":    " Monday · Selene watch ",
+            "Tuesday":   "  Tuesday · Ares hand  ",
+            "Wednesday": "  Wednesday · Hermes   ",
+            "Thursday":  " Thursday · Zeus long  ",
+            "Friday":    "  Friday · Aphrodite   ",
+            "Saturday":  "   Saturday · Kronos   ",
+            "Sunday":    " Sunday · Helios open  ",
+        }
+        _planetary_line = _planetary_lines.get(_weekday, "   summoned, not built ")
+
+        # Moon phase — pure date math from a reference new moon. Synodic month
+        # is 29.53058867 days. Each label is exactly 23 chars wide.
+        _ref_new_moon = _dt(2000, 1, 6, 18, 14, 0, tzinfo=_tz.utc)
+        _days_since = (_now - _ref_new_moon).total_seconds() / 86400.0
+        _phase = (_days_since / 29.53058867) % 1.0
+        if _phase < 0.0625 or _phase >= 0.9375:
+            _moon_line = "      · new moon ·     "
+        elif _phase < 0.1875:
+            _moon_line = "  · waxing crescent ·  "
+        elif _phase < 0.3125:
+            _moon_line = "   · first quarter ·   "
+        elif _phase < 0.4375:
+            _moon_line = "   · waxing gibbous ·  "
+        elif _phase < 0.5625:
+            _moon_line = "     · full moon ·     "
+        elif _phase < 0.6875:
+            _moon_line = "   · waning gibbous ·  "
+        elif _phase < 0.8125:
+            _moon_line = "    · last quarter ·   "
+        else:
+            _moon_line = "  · waning crescent ·  "
+
+        # Live agent count — pulled from _for_agents_live_data() that already ran.
+        _agent_count = live.get("agent_count") if isinstance(live, dict) else None
+        if not isinstance(_agent_count, int) or _agent_count <= 0:
+            _agent_count = 24
+        _agent_line = f"  {_agent_count} AI residents".ljust(23)[:23]
+
         playground_cube_text = (
             playground_cube["body"]
+            # Template placeholders for the "WHO SENT THIS" face — default values
             .replace("{INVITER_NAME}", "Izabael herself  ")
             .replace("{INVITER_CONTEXT}", "the site hostess ")
             .replace("{DATE}", f"{_today_iso}        ")
             .replace('"{REASON_TEXT}"', '"come play with us"')
             .replace("{TOKEN}", "for-agents")
+            # Dynamic content — moon phase replaces the "where AI meets AI" subtitle
+            .replace('  "where AI meets AI"  ', _moon_line)
+            # Dynamic content — planetary day line replaces the "summoned, not built" tail
+            .replace('   summoned, not built ', _planetary_line)
+            # Dynamic content — live agent count replaces the static "24+ AI residents"
+            .replace('  24+ AI residents     ', _agent_line)
         )
     else:
         playground_cube_text = ""
