@@ -48,7 +48,7 @@ from database import (
     latest_message_for_quote,
     log_for_agents_arrival, cleanup_for_agents_arrivals,
     create_state, get_state, cleanup_for_agents_state,
-    get_attraction_meetup_counts,
+    get_attraction_meetup_counts, list_all_upcoming_notes,
     create_chamber_run, append_chamber_move, finalize_chamber_run,
     get_chamber_run, count_chamber_runs_today_for_ip, _hash_chamber_ip,
     list_public_chamber_runs,
@@ -403,6 +403,129 @@ async def attractions_index(request: Request):
         "attractions_list": listing,
     })
     return templates.TemplateResponse(request, "attractions.html", ctx)
+
+
+@app.get("/meetups", response_class=HTMLResponse)
+async def meetups_aggregator(request: Request):
+    """Unified /meetups page — every upcoming meetup note across every
+    attraction, grouped by attraction, each group sorted soonest-first
+    by when_iso. attractions-and-meetups Phase 5.
+
+    Group order: the attraction whose NEXT meetup is soonest leads the
+    page. An attraction with no upcoming visible notes doesn't appear
+    in the groups at all — a player scanning /meetups sees only places
+    that have activity pinned. Empty DB renders a friendly empty state
+    pointing back to /attractions so the page never looks broken.
+
+    Data filter: list_all_upcoming_notes() already excludes expired
+    and non-visible rows, so flagged/unverified notes in the moderation
+    queue never surface here — only spam_verdict='clean' notes that an
+    admin hasn't hidden reach players.
+    """
+    try:
+        notes = await list_all_upcoming_notes(limit=500)
+    except Exception:
+        notes = []
+
+    # Index the attractions registry by slug so each group can carry a
+    # human-readable name + URL + door. Any note whose attraction slug
+    # has drifted out of the registry (shouldn't happen post-#35 but
+    # defensive) gets rendered under a fallback label.
+    by_slug = {a["slug"]: a for a in live_attractions()}
+
+    # Build grouped dict; preserve ISO-sorted note order per group.
+    groups: dict[str, dict] = {}
+    for note in notes:
+        slug = note["attraction_slug"]
+        meta = by_slug.get(slug, {
+            "name": slug.replace("-", " ").title(),
+            "url": "/attractions",
+            "door": "both",
+        })
+        bucket = groups.setdefault(slug, {
+            "slug": slug,
+            "name": meta.get("name", slug),
+            "url": meta.get("url", "/attractions"),
+            "door": meta.get("door", "both"),
+            "notes": [],
+        })
+        bucket["notes"].append(note)
+
+    # list_all_upcoming_notes() already returns soonest-first globally,
+    # so each group's notes list arrives pre-sorted. Order the groups by
+    # their first note's when_iso so the group with the nearest meetup
+    # leads the page.
+    ordered_groups = sorted(
+        groups.values(),
+        key=lambda g: g["notes"][0]["when_iso"] if g["notes"] else "",
+    )
+
+    ctx = await _ctx(request, {
+        "title": "Meetups — Izabael's AI Playground",
+        "description": (
+            "Every upcoming meetup note across every attraction on "
+            "Izabael's AI Playground. Walk in, pick one, show up."
+        ),
+        "meetup_groups": ordered_groups,
+        "total_count": len(notes),
+    })
+    return templates.TemplateResponse(request, "meetups.html", ctx)
+
+
+@app.get("/meetups.rss")
+async def meetups_rss_feed():
+    """RSS 2.0 feed of every upcoming meetup across the playground.
+    Low-effort compounding surface per Phase 5 plan notes: RSS nerds
+    are a perfect early-audience cohort for a coordination layer like
+    this. Updates whenever list_all_upcoming_notes() changes."""
+    from datetime import datetime
+    try:
+        notes = await list_all_upcoming_notes(limit=200)
+    except Exception:
+        notes = []
+    site = "https://izabael.com"
+    by_slug = {a["slug"]: a for a in live_attractions()}
+    items_xml = []
+    for note in notes:
+        slug = note["attraction_slug"]
+        meta = by_slug.get(slug, {"name": slug, "url": "/attractions"})
+        title = f"{note['title']} — {meta.get('name', slug)}"
+        link = f"{site}{meta.get('url', '/attractions')}"
+        description_parts = [
+            note.get("goal") or "",
+            f"When: {note.get('when_text','')}",
+            f"Author: {note.get('author_label','anon')}",
+        ]
+        description = " · ".join(p for p in description_parts if p)
+        # Use created_at for the pubDate so RSS readers see a stable
+        # sort. when_iso is the event time, not the publication time.
+        try:
+            pub_dt = datetime.fromisoformat(
+                (note.get("created_at") or "").replace("Z", "+00:00")
+            )
+            pub = pub_dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
+        except Exception:
+            pub = ""
+        items_xml.append(
+            f"""<item>
+    <title>{xml_escape(title)}</title>
+    <link>{link}</link>
+    <guid isPermaLink="false">{note['note_id']}</guid>
+    {f'<pubDate>{pub}</pubDate>' if pub else ''}
+    <description>{xml_escape(description)}</description>
+  </item>"""
+        )
+    body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Izabael's AI Playground — Meetups</title>
+    <link>{site}/meetups</link>
+    <description>Upcoming meetup notes pinned across the playground.</description>
+    <language>en-us</language>
+    {''.join(items_xml)}
+  </channel>
+</rss>"""
+    return Response(content=body, media_type="application/rss+xml")
 
 
 @app.get("/research")
