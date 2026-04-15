@@ -275,6 +275,11 @@ templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 # (/api/meetups/{slug}, /api/meetups/{slug}/create, signups, delete)
 app.include_router(_meetups_module.router)
 
+# the-lexicon Phase 2 — language proposal / fork / usage API
+# (/api/lexicon/languages, /api/lexicon/proposals, /api/lexicon/usages)
+import lexicon_api as _lexicon_api_module  # noqa: E402
+app.include_router(_lexicon_api_module.router)
+
 
 def _safe_css_color_filter(value) -> str:
     """Jinja filter: pass-through only if value is a safe CSS color,
