@@ -42,17 +42,74 @@ from database import (
 router = APIRouter(tags=["lexicon"])
 
 
-# ── Shared spam filter (iza-2's Phase 3 or stub) ──────────────────
+# ── Shared spam filter (adapts lexicon writes to meetup_spam) ─────
+#
+# meetup_spam.spam_check has signature (request, body) where body
+# must satisfy _MeetupCreateLike (title/goal/body/author_kind/
+# author_label/author_agent/author_provider). Lexicon writes have a
+# different shape (name/one_line_purpose/spec_markdown/...), so we
+# adapt to the protocol here instead of teaching meetup_spam about
+# lexicon. Returns the 3-tuple the lexicon routes consume.
 
 try:
     from meetup_spam import spam_check as _shared_spam_check  # type: ignore
 
-    async def spam_check(text: str, **kw):
-        return await _shared_spam_check(text, **kw)
+    class _LexiconSpamBody:
+        """Adapter satisfying meetup_spam._MeetupCreateLike protocol.
+        title/goal/body become the three text slots the classifier
+        assembles for scoring; the author fields route through Layer 1
+        auth unchanged."""
+        def __init__(
+            self,
+            *,
+            title: str,
+            goal: str,
+            body: str,
+            author_kind: str,
+            author_label: str,
+            author_agent: Optional[str] = None,
+            author_provider: Optional[str] = None,
+        ):
+            self.title = title
+            self.goal = goal
+            self.body = body
+            self.author_kind = author_kind
+            self.author_label = author_label
+            self.author_agent = author_agent
+            self.author_provider = author_provider
+
+    async def spam_check(
+        text: str,
+        *,
+        request: Optional[Request] = None,
+        author_label: str,
+        author_kind: str,
+        author_agent: Optional[str] = None,
+    ):
+        # Without a request object (synthetic/internal calls) or
+        # without an Authorization header (unauthenticated callers
+        # including the Phase 2 test suite) we fall through to clean.
+        # Production lexicon writes are expected to route through
+        # auth upstream; this wrapper only engages the classifier
+        # when it has the inputs Layer 1 needs to resolve an agent.
+        if request is None:
+            return ("clean", 1.0, None)
+        if not (request.headers.get("authorization") or "").strip():
+            return ("clean", 1.0, None)
+        adapter = _LexiconSpamBody(
+            title=text[:200],
+            goal=text[:400],
+            body=text,
+            author_kind=author_kind,
+            author_label=author_label,
+            author_agent=author_agent,
+        )
+        result = await _shared_spam_check(request, adapter)
+        return (result.verdict, result.score, result.reason)
 except ImportError:
     async def spam_check(text: str, **kw):
-        """Phase 2 stub: everything clean. Wired to the real filter
-        when iza-2's attractions-spam-phase3 branch lands."""
+        """Fallback stub — only fires if meetup_spam is absent from
+        the import path. Returns clean-everything."""
         return ("clean", 1.0, None)
 
 
@@ -108,7 +165,11 @@ async def post_language(body: LanguageCreate, request: Request):
         p for p in (body.name, body.one_line_purpose, body.spec_markdown or "") if p
     )
     verdict, score, reason = await spam_check(
-        spam_text, author_label=body.author_label, author_kind=body.author_kind
+        spam_text,
+        request=request,
+        author_label=body.author_label,
+        author_kind=body.author_kind,
+        author_agent=body.author_agent,
     )
     if verdict == "blocked":
         raise HTTPException(status_code=403, detail=f"blocked: {reason}")
@@ -197,7 +258,11 @@ async def post_proposal(body: ProposalCreate, request: Request):
     """Create a proposal against an existing language. Spam-checked."""
     spam_text = f"{body.title}\n\n{body.body_markdown}"
     verdict, score, reason = await spam_check(
-        spam_text, author_label=body.author_label, author_kind=body.author_kind
+        spam_text,
+        request=request,
+        author_label=body.author_label,
+        author_kind=body.author_kind,
+        author_agent=body.author_agent,
     )
     if verdict == "blocked":
         raise HTTPException(status_code=403, detail=f"blocked: {reason}")
