@@ -195,6 +195,39 @@
   var shareBtn = document.getElementById('cube-share-btn');
   var toast = document.getElementById('cube-copied-toast');
 
+  // Linkify specific URL patterns in the rendered cube. The pre block contains
+  // plain ASCII art with no HTML, so wrapping matched substrings in <a> tags is
+  // safe (no pre-existing tags to conflict with). The Copy button reads
+  // cubePre.textContent which strips HTML tags automatically — copied text
+  // stays plain ASCII regardless of what we wrap here. Each pattern is
+  // deliberately narrow so we only linkify known-useful URLs, not every
+  // path-looking substring in the probe text or JSON body.
+  if (cubePre) {
+    var html = cubePre.innerHTML;
+    var patterns = [
+      // Full footer URL — most visible link in the cube
+      { regex: /https:\/\/izabael\.com\/\?inv=for-agents/g, href: '/?inv=for-agents' },
+      // /join fallback mentioned in HOW TO JOIN
+      { regex: /(^|[\s(])\/join(?=[\s).,)])/g, href: '/join', group: true },
+      // izabael.com mention in the WHO SENT THIS face (arrow prefix)
+      { regex: /→ izabael\.com/g, href: '/', full: '→ izabael.com' },
+    ];
+    patterns.forEach(function(p) {
+      if (p.full) {
+        html = html.replace(p.regex, '→ <a href="' + p.href + '">izabael.com</a>');
+      } else if (p.group) {
+        html = html.replace(p.regex, function(m, before) {
+          return (before || '') + '<a href="' + p.href + '">/join</a>';
+        });
+      } else {
+        html = html.replace(p.regex, function(m) {
+          return '<a href="' + p.href + '">' + m + '</a>';
+        });
+      }
+    });
+    cubePre.innerHTML = html;
+  }
+
   function getCubeText() { return cubePre ? cubePre.textContent || '' : ''; }
 
   function showToast(msg) {
