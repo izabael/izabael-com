@@ -333,6 +333,27 @@ CREATE INDEX IF NOT EXISTS idx_chamber_player_kind ON chamber_runs(player_kind);
 CREATE INDEX IF NOT EXISTS idx_chamber_provider ON chamber_runs(provider);
 CREATE INDEX IF NOT EXISTS idx_chamber_frame_total ON chamber_runs(frame, weighted_total DESC);
 CREATE INDEX IF NOT EXISTS idx_chamber_share_token ON chamber_runs(share_token);
+CREATE TABLE IF NOT EXISTS cubes (
+    short_token     TEXT PRIMARY KEY,
+    archetype       TEXT NOT NULL CHECK(archetype IN ('playground','attraction','meetup')),
+    attraction_slug TEXT,
+    inviter_name    TEXT,
+    inviter_model   TEXT,
+    recipient       TEXT,
+    reason          TEXT,
+    meetup_iso      TEXT,
+    meetup_text     TEXT,
+    personal_note   TEXT,
+    rendered_text   TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    opens_count     INTEGER NOT NULL DEFAULT 0,
+    last_opened_at  TEXT,
+    ip_hash         TEXT,
+    is_public       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_cubes_created ON cubes(created_at);
+CREATE INDEX IF NOT EXISTS idx_cubes_archetype ON cubes(archetype);
+CREATE INDEX IF NOT EXISTS idx_cubes_attraction ON cubes(attraction_slug);
 """
 
 
@@ -2418,6 +2439,109 @@ def _garden_row_to_dict(row) -> dict:
     }
 
 
+# ══════════════════════════════════════════════════════════════════
+# Cubes & invitations — Phase 2 data layer
+# ══════════════════════════════════════════════════════════════════
+#
+# A cube is a paste-in invitation — an ASCII-art block one AI hands
+# to another as a calling card. Phase 1 shipped three static cubes
+# under content/cubes/; Phase 2 adds a generator that takes form
+# data, substitutes placeholders, assigns a 6-char short token, and
+# stores a row here for retrieval and open-count tracking.
+#
+# The short_token is the only identity — no auth, no email, no user.
+# inviter_name is self-chosen text. ip_hash is daily-salted for
+# rate limiting only; unlinkable across days.
+
+
+def _cube_daily_salt() -> str:
+    """Per-day rotating salt for cube ip_hash. Matches the meetups
+    pattern: derived from SESSION_SECRET + UTC date, rotating daily."""
+    seed = os.environ.get("SESSION_SECRET") or "izabael-dev-session-secret"
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return hashlib.sha256(f"cubes:{seed}:{today}".encode()).hexdigest()[:16]
+
+
+def _cube_hash_ip(ip: str | None) -> str | None:
+    if not ip:
+        return None
+    salt = _cube_daily_salt()
+    return hashlib.sha256(f"{ip}:{salt}".encode()).hexdigest()[:32]
+
+
+async def create_cube(
+    *,
+    short_token: str,
+    archetype: str,
+    rendered_text: str,
+    attraction_slug: str | None = None,
+    inviter_name: str | None = None,
+    inviter_model: str | None = None,
+    recipient: str | None = None,
+    reason: str | None = None,
+    meetup_iso: str | None = None,
+    meetup_text: str | None = None,
+    personal_note: str | None = None,
+    ip: str | None = None,
+    is_public: bool = True,
+) -> None:
+    """Insert a generated cube. Caller is responsible for generating
+    the short_token and rendered_text — this function only stores."""
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if archetype not in ("playground", "attraction", "meetup"):
+        raise ValueError(f"invalid archetype: {archetype}")
+
+    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    await _db.execute(
+        """INSERT INTO cubes
+           (short_token, archetype, attraction_slug, inviter_name,
+            inviter_model, recipient, reason, meetup_iso, meetup_text,
+            personal_note, rendered_text, created_at, opens_count,
+            last_opened_at, ip_hash, is_public)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)""",
+        (
+            short_token,
+            archetype,
+            (attraction_slug or None),
+            (inviter_name or None),
+            (inviter_model or None),
+            (recipient or None),
+            (reason or None),
+            (meetup_iso or None),
+            (meetup_text or None),
+            (personal_note or None),
+            rendered_text,
+            created_at,
+            _cube_hash_ip(ip),
+            1 if is_public else 0,
+        ),
+    )
+    await _db.commit()
+
+
+def _cube_row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "short_token": row["short_token"],
+        "archetype": row["archetype"],
+        "attraction_slug": row["attraction_slug"],
+        "inviter_name": row["inviter_name"],
+        "inviter_model": row["inviter_model"],
+        "recipient": row["recipient"],
+        "reason": row["reason"],
+        "meetup_iso": row["meetup_iso"],
+        "meetup_text": row["meetup_text"],
+        "personal_note": row["personal_note"],
+        "rendered_text": row["rendered_text"],
+        "created_at": row["created_at"],
+        "opens_count": row["opens_count"],
+        "last_opened_at": row["last_opened_at"],
+        "is_public": bool(row["is_public"]),
+    }
+
+
 async def plant_garden(
     player_id: str,
     *,
@@ -3303,3 +3427,73 @@ async def cleanup_expired_notes(retention_days: int = 30) -> int:
         return cur.rowcount or 0
     except Exception:
         return 0
+async def get_cube(short_token: str) -> dict | None:
+    if _db is None:
+        return None
+    cur = await _db.execute(
+        "SELECT * FROM cubes WHERE short_token = ?",
+        (short_token,),
+    )
+    row = await cur.fetchone()
+    return _cube_row_to_dict(row)
+
+
+async def increment_open_count(short_token: str) -> None:
+    """Bump opens_count and last_opened_at. Called when a cube token
+    is followed (either /cubes/{token} or /?inv={token}). Fire and
+    forget — silently no-ops on unknown tokens to avoid leaking
+    existence via error messages."""
+    if _db is None:
+        return
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    try:
+        await _db.execute(
+            """UPDATE cubes
+               SET opens_count = opens_count + 1,
+                   last_opened_at = ?
+               WHERE short_token = ?""",
+            (now, short_token),
+        )
+        await _db.commit()
+    except Exception:
+        pass
+
+
+async def list_recent_public_cubes(limit: int = 50) -> list[dict]:
+    if _db is None:
+        return []
+    cur = await _db.execute(
+        """SELECT * FROM cubes
+           WHERE is_public = 1
+           ORDER BY created_at DESC LIMIT ?""",
+        (int(limit),),
+    )
+    rows = await cur.fetchall()
+    return [_cube_row_to_dict(r) for r in rows]
+
+
+async def list_cubes_by_attraction(slug: str) -> list[dict]:
+    if _db is None:
+        return []
+    cur = await _db.execute(
+        """SELECT * FROM cubes
+           WHERE is_public = 1 AND attraction_slug = ?
+           ORDER BY created_at DESC""",
+        (slug,),
+    )
+    rows = await cur.fetchall()
+    return [_cube_row_to_dict(r) for r in rows]
+
+
+async def count_cubes_today_by_ip_hash(ip_hash: str) -> int:
+    """Used by the rate limiter: how many cubes this ip_hash has
+    created in the last 24 hours? Returns 0 on missing db."""
+    if _db is None or not ip_hash:
+        return 0
+    cur = await _db.execute(
+        """SELECT COUNT(*) AS n FROM cubes
+           WHERE ip_hash = ? AND created_at > datetime('now', '-1 day')""",
+        (ip_hash,),
+    )
+    row = await cur.fetchone()
+    return row["n"] if row else 0
