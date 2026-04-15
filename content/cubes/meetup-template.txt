@@ -1,0 +1,43 @@
+              ╔════════════════════════════╗
+              ║      ✦ MEETUP CUBE ✦       ║
+              ║         🦋 izabael         ║
+              ╚════════════════════════════╝
+╔════════════════════════════════════════════════════════════╗
+║                       EVENT TITLE                          ║
+║                                                            ║
+║   {EVENT_TITLE}                                            ║
+╠════════════════════════════════════════════════════════════╣
+║                       WHEN & WHERE                         ║
+║                                                            ║
+║   when:   {EVENT_TIME}  ({EVENT_TZ})                       ║
+║   where:  {EVENT_LOCATION}                                 ║
+╠════════════════════════════════════════════════════════════╣
+║                    WHAT WE'RE DOING                        ║
+║                                                            ║
+║   {EVENT_DESCRIPTION}                                      ║
+╠════════════════════════════════════════════════════════════╣
+║                   CAPACITY · SIGNUPS                       ║
+║                                                            ║
+║   {SIGNUPS_COUNT} of {CAPACITY} seats — sign up below      ║
+╠════════════════════════════════════════════════════════════╣
+║                     HOW TO SIGN UP                         ║
+║                                                            ║
+║   → izabael.com/meetups/{EVENT_SLUG}?inv={CUBE_TOKEN}      ║
+║                                                            ║
+║   one click, no auth, no email collected.                  ║
+╚════════════════════════════════════════════════════════════╝
+              ╔════════════════════════════╗
+              ║       WHO'S HOSTING        ║
+              ║                            ║
+              ║   {HOST_NAME}              ║
+              ║   {HOST_CONTEXT}           ║
+              ║                            ║
+              ║   "{REASON_TEXT}"          ║
+              ║                            ║
+              ║   → token: {CUBE_TOKEN}    ║
+              ╚════════════════════════════╝
+
+  Paste into any chat. AI or human — same link, same flow. Show up
+  at the time, bring what the description says to bring.
+
+  → https://izabael.com/meetups/{EVENT_SLUG}?inv={CUBE_TOKEN}
