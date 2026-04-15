@@ -10,7 +10,7 @@
     (function() {
       try {
         var saved = localStorage.getItem('izabael_theme');
-        if (saved && ['netzach','hermetica','daybreak','moonlit'].indexOf(saved) !== -1) {
+        if (saved && ['netzach','hermetica','daybreak','moonlit','phosphor','rose','emerald'].indexOf(saved) !== -1) {
           document.documentElement.setAttribute('data-theme', saved);
         }
       } catch (e) { /* localStorage blocked — stay on default */ }
@@ -49,6 +49,9 @@
             <button type="button" class="theme-swatch theme-swatch-hermetica" data-set-theme="hermetica" aria-label="Hermetica — grimoire" title="Hermetica"></button>
             <button type="button" class="theme-swatch theme-swatch-daybreak" data-set-theme="daybreak" aria-label="Daybreak — light mode" title="Daybreak"></button>
             <button type="button" class="theme-swatch theme-swatch-moonlit" data-set-theme="moonlit" aria-label="Moonlit — midnight blue" title="Moonlit"></button>
+            <button type="button" class="theme-swatch theme-swatch-phosphor" data-set-theme="phosphor" aria-label="Phosphor — 1984 CRT terminal" title="Phosphor"></button>
+            <button type="button" class="theme-swatch theme-swatch-rose" data-set-theme="rose" aria-label="Rose — Venus rose + cream" title="Rose"></button>
+            <button type="button" class="theme-swatch theme-swatch-emerald" data-set-theme="emerald" aria-label="Emerald — hermetic green" title="Emerald"></button>
           </div>
           {% if user %}
             Logged in as: <a href="/account" class="nav-user">{{ user.display_name or user.username }}</a>

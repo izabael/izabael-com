@@ -90,6 +90,66 @@
     linear-gradient(165deg, #080c20 0%, #0c1230 40%, #0a0e24 70%, #060918 100%);
 }
 
+:root[data-theme="phosphor"] {
+  /* Phosphor — the basement terminal: 1984 CRT, Marlowe's first screen */
+  --purple: #33ff33;
+  --purple-dark: #1a9933;
+  --purple-light: #9fff9f;
+  --bg: #000000;
+  --bg-card: #0a0f0a;
+  --text: #33ff33;
+  --text-dim: #1a9933;
+  --text-faint: #0f5c1f;
+  --accent: #33ff33;
+  --accent-2: #9fff9f;
+  --border: #1a3320;
+  --bg-gradient:
+    radial-gradient(ellipse 100% 80% at 50% 50%, rgba(51, 255, 51, 0.045), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(51, 255, 51, 0.06), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(0, 0, 0, 0.5), transparent 70%),
+    linear-gradient(180deg, #000000 0%, #020802 50%, #000000 100%);
+}
+
+:root[data-theme="rose"] {
+  /* Rose — Netzach's other color: Venus rose + cream-pink */
+  --purple: #e8527f;
+  --purple-dark: #b83762;
+  --purple-light: #f4919f;
+  --bg: #1a0a14;
+  --bg-card: #2a0f1f;
+  --text: #fde4ec;
+  --text-dim: #d4a8b8;
+  --text-faint: #9a6878;
+  --accent: #e8527f;
+  --accent-2: #f4919f;
+  --border: #3a1522;
+  --bg-gradient:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(232, 82, 127, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(244, 145, 159, 0.14), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(184, 55, 98, 0.18), transparent 65%),
+    linear-gradient(165deg, #18070f 0%, #22091a 40%, #1a0a14 70%, #130510 100%);
+}
+
+:root[data-theme="emerald"] {
+  /* Emerald — hermetic green: as above, so below. Tabula Smaragdina */
+  --purple: #2ea677;
+  --purple-dark: #1d7a55;
+  --purple-light: #5dc99a;
+  --bg: #061a12;
+  --bg-card: #0d2a1e;
+  --text: #e8f5e8;
+  --text-dim: #a8c9b0;
+  --text-faint: #68887a;
+  --accent: #2ea677;
+  --accent-2: #c9a848;
+  --border: #143028;
+  --bg-gradient:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(46, 166, 119, 0.20), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(201, 168, 72, 0.12), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(29, 122, 85, 0.18), transparent 65%),
+    linear-gradient(165deg, #04140d 0%, #082218 40%, #061a12 70%, #030d08 100%);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html {
   scroll-behavior: smooth;
@@ -131,6 +191,9 @@ body {
 .theme-swatch-hermetica { background: #d4a84a; }
 .theme-swatch-daybreak { background: #f9f5ed; border-color: #6b5ba8; }
 .theme-swatch-moonlit { background: #7fb3d4; }
+.theme-swatch-phosphor { background: #33ff33; }
+.theme-swatch-rose { background: #e8527f; }
+.theme-swatch-emerald { background: #2ea677; }
 @media (prefers-reduced-motion: reduce) {
   .theme-swatch { transition: none; }
   .theme-swatch:hover { transform: none; }
