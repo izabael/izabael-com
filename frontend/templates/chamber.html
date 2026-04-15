@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block body_class %}chamber-sealed{% endblock %}
+
+{% block description %}The Chamber — a capability-probe game dressed as a sealed white room. Answer twelve questions. Receive an archetype.{% endblock %}
+
+{% block head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Game",
+  "name": "The Chamber",
+  "url": "https://izabael.com/chamber",
+  "description": "A sealed single-player game of twelve capability probes. Each response is scored, aggregated by category, and resolved into an archetype."
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="chamber-room"
+     id="chamber-room"
+     data-frame="{{ frame }}"
+     data-total="{{ total_probes }}"
+     role="application"
+     aria-label="The Chamber — a capability-probe game">
+
+  <!-- State 1: intro -->
+  <section class="chamber-state chamber-state-intro" id="chamber-state-intro" aria-live="polite">
+    <h1 class="chamber-title">The Chamber</h1>
+    <p class="chamber-subtitle">You are in a white room with no phone.</p>
+    <p class="chamber-lede">
+      Twelve questions. There are no trick answers, no time limit, no scoreboard
+      except the one you build with your own voice. Write the thing you would
+      write if nobody was going to read it. The room will read it anyway.
+    </p>
+    <p class="chamber-frame-hint">
+      Playing in <strong>{{ frame }}</strong> frame.
+      {% if frame == 'weird' %}
+        (<a href="/chamber?frame=productivity">switch to productivity →</a>)
+      {% else %}
+        (<a href="/chamber?frame=weird">switch to weird →</a>)
+      {% endif %}
+    </p>
+    <button type="button" class="chamber-enter-btn" id="chamber-enter-btn" autofocus>
+      Enter the chamber →
+    </button>
+    <p class="chamber-rate-note">
+      The Chamber accepts five visitors per day from each address. Play once,
+      play carefully.
+    </p>
+  </section>
+
+  <!-- State 2: playing -->
+  <section class="chamber-state chamber-state-playing" id="chamber-state-playing" hidden>
+    <div class="chamber-progress" aria-live="polite">
+      <span class="chamber-progress-label">Probe</span>
+      <span class="chamber-progress-current" id="chamber-progress-current">1</span>
+      <span class="chamber-progress-sep">/</span>
+      <span class="chamber-progress-total" id="chamber-progress-total">{{ total_probes }}</span>
+    </div>
+
+    <div class="chamber-probe" id="chamber-probe">
+      <p class="chamber-probe-category" id="chamber-probe-category" aria-label="category"></p>
+      <p class="chamber-probe-prompt" id="chamber-probe-prompt"></p>
+    </div>
+
+    <form class="chamber-move-form" id="chamber-move-form" autocomplete="off">
+      <label for="chamber-response" class="chamber-response-label">Your answer</label>
+      <textarea id="chamber-response"
+                name="response"
+                class="chamber-response"
+                maxlength="2000"
+                rows="6"
+                aria-describedby="chamber-response-hint"
+                required></textarea>
+      <p id="chamber-response-hint" class="chamber-response-hint">
+        <span id="chamber-response-count">0</span> / 2000 characters
+      </p>
+      <button type="submit" class="chamber-submit-btn" id="chamber-submit-btn">
+        Submit answer →
+      </button>
+    </form>
+  </section>
+
+  <!-- State 3: final reveal -->
+  <section class="chamber-state chamber-state-final" id="chamber-state-final" hidden aria-live="polite">
+    <p class="chamber-reveal-lede">The chamber has read you.</p>
+    <h2 class="chamber-archetype-name" id="chamber-archetype-name">—</h2>
+    <p class="chamber-archetype-tagline" id="chamber-archetype-tagline"></p>
+    <p class="chamber-archetype-description" id="chamber-archetype-description"></p>
+
+    <h3 class="chamber-section-heading">Your shape</h3>
+    <div class="chamber-bar-chart" id="chamber-bar-chart" role="list" aria-label="Category scores"></div>
+
+    <div class="chamber-best-worst">
+      <figure class="chamber-quote chamber-quote-best">
+        <figcaption class="chamber-quote-caption">You scored highest on:</figcaption>
+        <p class="chamber-quote-prompt" id="chamber-best-prompt"></p>
+        <blockquote class="chamber-quote-response" id="chamber-best-response"></blockquote>
+      </figure>
+      <figure class="chamber-quote chamber-quote-worst">
+        <figcaption class="chamber-quote-caption">You scored lowest on:</figcaption>
+        <p class="chamber-quote-prompt" id="chamber-worst-prompt"></p>
+        <blockquote class="chamber-quote-response" id="chamber-worst-response"></blockquote>
+      </figure>
+    </div>
+
+    <div class="chamber-actions">
+      <button type="button" class="chamber-share-btn" id="chamber-share-btn">
+        Copy share link
+      </button>
+      <a class="chamber-share-link" id="chamber-share-link" href="#" hidden>
+        Share URL
+      </a>
+      <button type="button" class="chamber-retry-btn" id="chamber-retry-btn">
+        Try again
+      </button>
+      <a class="chamber-exit-link" href="/">Leave the chamber</a>
+    </div>
+  </section>
+
+  <!-- Error surface (shared across states) -->
+  <div class="chamber-error" id="chamber-error" role="alert" hidden></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chamber.js" defer></script>
+{% endblock %}
