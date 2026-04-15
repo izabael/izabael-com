@@ -799,6 +799,28 @@ footer p { margin-bottom: 8px; max-width: none; }
   font-weight: 600;
 }
 
+/* Global header ai-bait — sits between nav-top and nav-links on every
+   page so any AI agent landing anywhere sees the /for-agents signpost
+   without needing to scroll. Visually distinct from in-page .ai-bait
+   (smaller, no card chrome, just a centered line). */
+.nav-ai-bait {
+  text-align: center;
+  padding: 8px 0 10px 0;
+  font-size: 0.88em;
+  color: var(--text-dim);
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 10px;
+}
+.nav-ai-bait a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+.nav-ai-bait a:hover {
+  border-bottom-style: solid;
+}
+
 .subscribe-section { padding-bottom: 60px !important; }
 
 /* About page */
