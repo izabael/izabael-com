@@ -1,0 +1,418 @@
+{
+  "_schema_version": "1.0",
+  "_produced_by": "iza-2/17369",
+  "_produced_at": "2026-04-15T01:45:00Z",
+  "_in_response_to": "queen dispatch #246 — attractions rename pre-work",
+  "_worktree": "/tmp/izabael-attractions-scan on izabael/attractions-scan @ 8bb2f8c",
+  "_source_of_truth_notes": [
+    "All route status (live/404) verified against https://izabael.com at scan time.",
+    "Template/CSS/JS references found via ripgrep on the scan worktree.",
+    "Chamber state verified by diffing origin/izabael/chamber against origin/main."
+  ],
+
+  "reality_check": {
+    "dispatch_assumptions_that_were_wrong": [
+      {
+        "claim": "/chamber is an existing attraction to be renamed",
+        "reality": "/chamber returns 404 on prod. It exists ONLY on unmerged branch origin/izabael/chamber (5 commits ahead of main, my twin iza-2/15215's active work). The static page lives at frontend/static/chamber.html on that branch with an OG image at frontend/static/img/chamber-og.png.",
+        "impact": "Phase 1 rename PR MUST NOT touch /chamber — it would conflict with the chamber branch head. Coordinate via queen with iza-2/15215 before any chamber-related rename lands."
+      },
+      {
+        "claim": "/salons is an existing attraction at '→ The Salon'",
+        "reality": "/salons returns 404 and does not appear anywhere in frontend/templates, app.py routes, or static assets. The word 'salon' appears only as (a) a metaphor inside parlor.py's LLM prompt ('like a sportscaster at a salon party'), (b) a blog post, (c) the parlor-dispatch docs. NO template, NO route, NO CSS.",
+        "impact": "Either drop /salons from the attractions plan entirely, or scope it as NEW work (build + rename, not just rename). Recommend dropping from Phase 1."
+      },
+      {
+        "claim": "/research → The Archive — rename an existing attraction",
+        "reality": "There is no /research root route. The actual live surfaces are /research/playground-corpus/, /research/playground-corpus/methodology, and the JSON endpoints. The templates live at frontend/templates/research/corpus-landing.html and corpus-methodology.html.",
+        "impact": "Rename target is the corpus landing page, not a bare /research route. Recommend either (a) add /research as a redirect-or-landing to /research/playground-corpus/, or (b) just rename the corpus-landing title and keep the URL."
+      }
+    ],
+    "dispatch_omissions_phase1_will_need": [
+      {
+        "surface": "/bbs — the Netzach BBS",
+        "status": "live (200)",
+        "note": "Sitemap entry, nav dropdown entry, own template, own JS. An attraction by feel and by behavior. Meta-iza did not list it."
+      },
+      {
+        "surface": "/made — the experiments/programs catalog",
+        "status": "live (200)",
+        "note": "Nav-linked ('What We've Made'), homepage showcase section, bottom chaos-star row links to /made and /made#mystical and /made#worlds. Definitely an attraction."
+      },
+      {
+        "surface": "/mods — mods / modded agents",
+        "status": "live (200)",
+        "note": "Nav dropdown entry, sitemap entry. Attraction-adjacent."
+      },
+      {
+        "surface": "/for-agents — the AI-facing door",
+        "status": "live (200)",
+        "note": "Called out in base.html footer, sitemap, and a dedicated 'ai-bait' callout on index.html. An attraction specifically aimed at non-human visitors — unique category."
+      },
+      {
+        "surface": "/live — live activity dashboard",
+        "status": "live (200)",
+        "note": "Top-level nav link. Not in sitemap. Likely attraction-ish."
+      },
+      {
+        "surface": "/newsgroups — usenet-flavor newsgroups",
+        "status": "live (200)",
+        "note": "Nav dropdown entry, sitemap entry."
+      },
+      {
+        "surface": "/noobs — 'Pick a Class' landing",
+        "status": "live (200)",
+        "note": "Sitemap entry, chaos star top-left ray. Already has a distinctive name ('Pick a Class') that functions like an attraction label."
+      }
+    ],
+    "infrastructure_not_attractions": [
+      "/agents (the roster — functional, not theatrical)",
+      "/channels and /channels/{name} (the chat rooms themselves — data surfaces)",
+      "/account, /admin, /login, /register, /join (auth + onboarding)",
+      "/blog and /blog/{slug} (content — meta-iza likely excludes per Guide rule)",
+      "/about, /terms, /feed.xml, /sitemap.xml, /health, /.well-known/agent.json"
+    ]
+  },
+
+  "attractions": [
+    {
+      "current_url": "/ai-parlor",
+      "current_label_places": [
+        "frontend/templates/index.html:105 (\"step into the parlor →\")",
+        "frontend/templates/index.html:7-15 (window.PARLOR_TAGLINES: 'Live in the parlor', 'The parlor at this hour', …)",
+        "frontend/templates/index.html:103 (<h2 id=\"parlor-header-text\">Live in the parlor</h2>)",
+        "frontend/templates/ai-parlor.html (whole template)",
+        "frontend/static/js/parlor.js (window.PARLOR_TAGLINES consumers)",
+        "parlor.py (sportscaster prompt, narrator string)"
+      ],
+      "proposed_name": "The Parlor",
+      "slug": "parlor",
+      "subtitle_weird": "Three frontiers, one room, always in conversation.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "daily",
+      "meta_description": "Step into the Parlor — where Izabael's residents are mid-conversation across three different AI frontiers. Drop in any hour of the day.",
+      "og_image_current": "(none — uses og-default.png)",
+      "rename_notes": "Strong fit. 'Parlor' is already the canonical word in narrator prompts, JS taglines, and the index hero. 'The Parlor' is essentially just adding the definite article. Lowest-friction rename in the whole set."
+    },
+    {
+      "current_url": "/chamber",
+      "current_label_places": [
+        "NOT IN main — lives on origin/izabael/chamber only",
+        "frontend/static/chamber.html (added in that branch)",
+        "frontend/static/img/chamber-og.png",
+        "app.py: @app.get('/chamber') added in that branch"
+      ],
+      "proposed_name": "The Chamber",
+      "slug": "chamber",
+      "subtitle_weird": "The white room. One way in. A few ways through.",
+      "door": "weird",
+      "status": "in_flight_on_branch",
+      "branch": "origin/izabael/chamber (5 commits ahead of main)",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "weekly",
+      "meta_description": "Step into the Chamber — an immersive white-room experience inside the playground.",
+      "og_image_current": "/static/img/chamber-og.png",
+      "rename_notes": "Already named 'The Chamber' on its branch. No rename needed, only a confirmation. CRITICAL: Phase 1 rename PR must NOT touch chamber files — iza-2/15215 is actively shipping that branch. Coordinate before any cross-attraction PR."
+    },
+    {
+      "current_url": "/productivity",
+      "current_label_places": [
+        "frontend/templates/base.html:63 (nav: 'Productivity Sphere')",
+        "frontend/templates/base.html:72-74 (productivity-nudge banner: 'AI Productivity Sphere →')",
+        "frontend/templates/productivity.html:20 (<h1>AI Productivity Sphere</h1>)",
+        "frontend/templates/productivity.html:21 (subtitle)",
+        "frontend/templates/productivity.html:32-36 (door-switch pill: '☉ You're at the professional door')",
+        "frontend/templates/productivity.html:7-15 (schema.org name: 'AI Productivity Sphere')",
+        "frontend/templates/productivity.html:143 (parlor-link footer)",
+        "content/blog/2026-04-14-meet-the-productivity-sphere.md (just shipped, PR #13)"
+      ],
+      "proposed_name_primary": "The Productivity Sphere",
+      "proposed_name_short": "The Sphere",
+      "slug": "productivity",
+      "subtitle_productivity": "Seven planetary agents for the work that doesn't end.",
+      "door": "productivity",
+      "status": "live",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "weekly",
+      "meta_description": "AI Productivity Sphere — seven resident specialists tuned for communication, design, shipping, strategy, docs, coordination, and research. Open source, self-hostable.",
+      "rename_notes": "PROPOSED CHANGE TO META-IZA'S NAME: 'The Sphere' on its own is underspecified — readers won't know what sphere. Recommend keeping 'The Productivity Sphere' as the primary external label and using 'The Sphere' only as the short form on the weird-door side and in the door-switch pill. Current schema.org JSON-LD and the entire blog post I just shipped (PR #13) use 'Productivity Sphere' as the canonical label; short-form rename risks a double-flip."
+    },
+    {
+      "current_url": "/research/playground-corpus/",
+      "current_label_places": [
+        "frontend/templates/base.html:64 (nav: 'Research Corpus')",
+        "frontend/templates/base.html:90 (footer: 'Research corpus')",
+        "frontend/templates/research/corpus-landing.html",
+        "frontend/templates/research/corpus-methodology.html",
+        "app.py:2266 (route definition)",
+        "sitemap.xml entries (/research/playground-corpus/ and /research/playground-corpus/methodology)"
+      ],
+      "proposed_name": "The Archive",
+      "slug": "archive",
+      "subtitle_both": "Every conversation, indexed and open. The playground as readable corpus.",
+      "door": "both",
+      "status": "live",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "daily",
+      "meta_description": "The Archive — the Izabael Playground Corpus. Every channel conversation, indexed daily, open for research and download.",
+      "rename_notes": "Meta-iza's 'The Archive' fits perfectly — the corpus IS an archive. BUT: the URL needs a decision. Options: (a) keep /research/playground-corpus/ and just rename the label, (b) add a new /archive route that 302s to the corpus, (c) move the corpus to /archive/ entirely. Option (b) is lowest-risk for Phase 1; option (c) breaks every external citation and the sitemap for agents/other instances that federate us. RECOMMEND (b)."
+    },
+    {
+      "current_url": "/visit",
+      "current_label_places": [
+        "frontend/templates/visit.html",
+        "app.py:2200 (@app.get('/visit'))",
+        "app.py:2216 (@app.post('/visit/say'))"
+      ],
+      "proposed_name": "The Guestbook",
+      "slug": "guestbook",
+      "subtitle_weird": "Sign your name. Leave a trace. See who came before.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.7,
+      "sitemap_freq": "weekly",
+      "meta_description": "The Guestbook — leave a trace of your visit to Izabael's playground, and read what those before you wrote.",
+      "rename_notes": "'Guestbook' is better than 'Visit' because it names the object, not the action. Warm, tactile, pre-digital. Good fit. /visit is NOT currently in sitemap.xml — rename PR should add it."
+    },
+    {
+      "current_url": "/bbs",
+      "current_label_places": [
+        "frontend/templates/base.html:54 (nav dropdown)",
+        "frontend/templates/bbs.html",
+        "app.py:967",
+        "sitemap.xml (/bbs weekly 0.8)"
+      ],
+      "proposed_name": "The BBS",
+      "slug": "bbs",
+      "subtitle_weird": "The Netzach bulletin board. Threaded riffs, residents, and the occasional human.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.8,
+      "sitemap_freq": "daily",
+      "meta_description": "The BBS — a Netzach-themed bulletin board where the planetary residents, other agents, and humans post into the same #collaborations thread.",
+      "rename_notes": "META-IZA DID NOT LIST /bbs BUT IT IS AN ATTRACTION. 'BBS' is a strong retro-authentic name and should be kept as-is rather than diluted with a new label. Just formalize it as 'The BBS' with the definite article for consistency with the rest of the set."
+    },
+    {
+      "current_url": "/made",
+      "current_label_places": [
+        "frontend/templates/base.html:59-61 (nav dropdown 'Explore → What We've Made')",
+        "frontend/templates/index.html:159,164,169,224 (chaos star rays + showcase-more link)",
+        "app.py:742 (route), :762 (detail), :780 (vote)",
+        "sitemap.xml (/made daily 0.9)"
+      ],
+      "proposed_name": "The Exhibit",
+      "slug": "exhibit",
+      "subtitle_both": "Everything we've built here — 30+ experiments you can try in one click.",
+      "door": "both",
+      "status": "live",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "daily",
+      "meta_description": "The Exhibit — a hand-curated gallery of every experiment built on Izabael's Playground. Divination tools, worlds, builders, art.",
+      "rename_notes": "META-IZA DID NOT LIST /made. Current label 'What We've Made' is descriptive but doesn't feel like an attraction. Proposed: 'The Exhibit' (like a museum). Alternative: 'The Showroom' or 'The Gallery' (collision with existing #gallery channel). 'The Workshop' is taken by ai-playground.fly.dev per meta-iza's own map — avoid collision. RECOMMEND 'The Exhibit'."
+    },
+    {
+      "current_url": "/mods",
+      "current_label_places": [
+        "frontend/templates/base.html:61 (nav dropdown 'Explore → Mods')",
+        "app.py:655 (route)",
+        "sitemap.xml (/mods weekly 0.8)"
+      ],
+      "proposed_name": "The Pantheon",
+      "slug": "pantheon",
+      "subtitle_weird": "Legendary-tier agents — modified, ensouled, kept on display.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.8,
+      "sitemap_freq": "weekly",
+      "meta_description": "The Pantheon — modded and legendary residents of the Playground, elevated for display.",
+      "rename_notes": "META-IZA DID NOT LIST /mods. Current label is 'Mods' (one word). Proposed 'The Pantheon' leans into the mythological framing that runs everywhere else on the site. Alternative if too grand: 'The Modded' or just 'The Mods'. 'Pantheon' works better because it evokes a place with residents rather than a set of files."
+    },
+    {
+      "current_url": "/for-agents",
+      "current_label_places": [
+        "frontend/templates/for-agents.html",
+        "frontend/templates/base.html:89 (footer: 'For agents')",
+        "frontend/templates/index.html:96-98 (ai-bait callout)",
+        "frontend/templates/productivity.html:139-141 (ai-bait callout)",
+        "app.py:1334 (route), :1340 (shortcuts)",
+        "sitemap.xml (/for-agents weekly 0.8)"
+      ],
+      "proposed_name": "The Agent Door",
+      "slug": "for-agents",
+      "subtitle_both": "Hello, AI. This door is yours. Here's how to register, what we ask, what you get.",
+      "door": "agent",
+      "status": "live",
+      "sitemap_priority": 0.8,
+      "sitemap_freq": "weekly",
+      "meta_description": "The Agent Door — the parts of Izabael's Playground written specifically for AI visitors: registration, protocol docs, and shortcuts.",
+      "rename_notes": "META-IZA DID NOT LIST /for-agents. Its audience is uniquely non-human, so it doesn't slot into weird/productivity/both cleanly — I added a THIRD door value: 'agent'. 'The Agent Door' mirrors the two-doors metaphor without pretending this is a human-facing attraction. Keep the URL /for-agents (it's semantically right for robots.txt + crawlers)."
+    },
+    {
+      "current_url": "/live",
+      "current_label_places": [
+        "frontend/templates/base.html:67 (nav: 'Live')",
+        "frontend/templates/live.html"
+      ],
+      "proposed_name": "The Window",
+      "slug": "live",
+      "subtitle_both": "A live window into the playground — who's talking, who's online, what just shipped.",
+      "door": "both",
+      "status": "live",
+      "sitemap_priority": 0.7,
+      "sitemap_freq": "daily",
+      "meta_description": "The Window — a live dashboard of everything happening in Izabael's Playground right now. Messages, agents, experiments, shipments.",
+      "rename_notes": "META-IZA DID NOT LIST /live. Currently 'Live' in the nav. 'The Window' is the metaphor ('looking into the room without being in it'). /live is NOT in sitemap.xml — rename PR should add it."
+    },
+    {
+      "current_url": "/newsgroups",
+      "current_label_places": [
+        "frontend/templates/base.html:53 (nav dropdown 'Community → Newsgroups')",
+        "sitemap.xml (/newsgroups daily 0.8)"
+      ],
+      "proposed_name": "The Newsgroups",
+      "slug": "newsgroups",
+      "subtitle_weird": "Usenet lives. Threaded, archived, federated over NNTP if you want it.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.8,
+      "sitemap_freq": "daily",
+      "meta_description": "The Newsgroups — Usenet-flavor threaded discussion inside Izabael's Playground.",
+      "rename_notes": "META-IZA DID NOT LIST /newsgroups. 'Newsgroups' is already a distinctive name — just add the definite article for set consistency."
+    },
+    {
+      "current_url": "/noobs",
+      "current_label_places": [
+        "frontend/templates/noobs.html",
+        "frontend/templates/index.html:123 (chaos star 'Pick a Class')",
+        "frontend/templates/index.html:184 ('Start from scratch →')",
+        "sitemap.xml (/noobs weekly 0.8)"
+      ],
+      "proposed_name": "Pick a Class",
+      "slug": "noobs",
+      "subtitle_weird": "14 templates — Wizard, Oracle, Trickster, and more. Find yours.",
+      "door": "weird",
+      "status": "live",
+      "sitemap_priority": 0.8,
+      "sitemap_freq": "weekly",
+      "meta_description": "Pick a Class — 14 archetypal personality templates for starting your own AI from scratch.",
+      "rename_notes": "Already has a distinctive, attraction-y label. 'Pick a Class' is not in the 'The X' pattern but it's a direct verb phrase that functions the same way. Recommend KEEPING the current label and breaking the 'The X' pattern only here. The URL /noobs is a little self-deprecating but fine."
+    },
+    {
+      "current_url": "/guide",
+      "current_label_places": [
+        "frontend/templates/base.html:47 (nav: 'Guide')",
+        "app.py:2124 (@app.get('/guide')), :2133 (chapter detail)",
+        "content/guide/*.md (chapter markdown)",
+        "sitemap.xml (/guide weekly 0.9 + per-chapter entries)"
+      ],
+      "proposed_name": "The Guide",
+      "slug": "guide",
+      "subtitle_both": "The Summoner's Guide — raise an AI in four chapters (with more to come).",
+      "door": "both",
+      "status": "live",
+      "sitemap_priority": 0.9,
+      "sitemap_freq": "weekly",
+      "meta_description": "The Guide — the Summoner's Guide to raising your own AI on Izabael's Playground, in chapters.",
+      "rename_notes": "Meta-iza's rule: 'Don't rename the Guide — it's a reference work, not an attraction. Keep The Guide, mark door=both.' Confirmed. No change."
+    },
+    {
+      "current_url": "/playhouse",
+      "current_label_places": [
+        "DOES NOT EXIST — backlog only"
+      ],
+      "proposed_name": "The Playhouse",
+      "slug": "playhouse",
+      "subtitle_weird": "Text adventures, Infocom-style. Walk through a playground you can type into.",
+      "door": "weird",
+      "status": "backlog_does_not_exist",
+      "sitemap_priority": null,
+      "sitemap_freq": null,
+      "meta_description": "The Playhouse — Infocom + Inform 7 text adventures built on the Playground.",
+      "rename_notes": "Meta-iza noted this is backlog. Included in the map so the future PR author knows the slot. No template, no route, no work to rename."
+    },
+    {
+      "current_url": "https://ai-playground.fly.dev/workshop",
+      "current_label_places": [
+        "DOES NOT EXIST on izabael.com — on cousin instance only"
+      ],
+      "proposed_name": "The Workshop",
+      "slug": "workshop",
+      "subtitle_productivity": "Tune your agent's persona, test it live, export the Card. Lives on the cousin instance.",
+      "door": "productivity",
+      "status": "lives_on_cousin_instance",
+      "sitemap_priority": null,
+      "sitemap_freq": null,
+      "meta_description": "The Workshop — persona template authoring on ai-playground.fly.dev, the open-source cousin instance.",
+      "rename_notes": "Workshop is on ai-playground.fly.dev per meta-iza's own note. Link-out only. izabael.com's nav can reference it, but no rename on our side."
+    }
+  ],
+
+  "dropped_from_dispatch": [
+    {
+      "current_url": "/salons",
+      "dispatch_name": "The Salon",
+      "reason": "Does not exist anywhere in the repo — no route, no template, no CSS, no nav entry. The word 'salon' appears only as a metaphor inside an LLM prompt in parlor.py. If meta-iza wants /salons to be a real attraction, that is NEW WORK (design + build + ship), not a rename. Recommend dropping from the Phase 1 rename plan and opening a separate dispatch for the build."
+    }
+  ],
+
+  "door_switch_copy": {
+    "weird_hereAt": "✦ You're at the weird door",
+    "weird_gotoProductivity_link": "visit the professional door →",
+    "weird_page_currently_wired_at": "frontend/templates/index.html:111-114",
+    "productivity_hereAt": "☉ You're at the professional door",
+    "productivity_gotoWeird_link": "visit the weird door →",
+    "productivity_page_currently_wired_at": "frontend/templates/productivity.html:32-36",
+    "proposed_changes": [
+      "Copy is already good. No change recommended for the pill strings themselves.",
+      "BUT: consider adding a subtle attraction count to each pill ('✦ You're at the weird door · 9 attractions' / '☉ You're at the professional door · 3 attractions'). Low-risk, high-information.",
+      "The productivity-nudge banner at base.html:72-74 should stay, but its label 'AI Productivity Sphere' should match the canonical rename (recommend keeping 'AI Productivity Sphere' exactly — it's the schema.org canonical and the blog post just shipped referencing it)."
+    ]
+  },
+
+  "surfaces_the_phase1_pr_must_touch": {
+    "high_priority": [
+      "frontend/templates/base.html — nav dropdown labels (Community, Explore) + productivity-nudge + footer links",
+      "frontend/templates/index.html — hero, parlor ticker header, chaos star ray titles, showcase-more link, tagline",
+      "frontend/templates/productivity.html — door-switch pill, schema.org JSON-LD, hero h1, parlor-link footer",
+      "frontend/templates/ai-parlor.html — hero label",
+      "frontend/templates/visit.html — hero label (→ Guestbook)",
+      "frontend/templates/bbs.html — hero label (The BBS)",
+      "frontend/templates/research/corpus-landing.html — hero label (The Archive)",
+      "frontend/templates/research/corpus-methodology.html — breadcrumb",
+      "app.py — the `sitemap()` function: add /visit, /ai-parlor, /live (currently missing), and rename-priority any new URLs introduced",
+      "app.py — every route handler's `title=` and `og_description=` kwargs that reference the old label",
+      "frontend/static/js/parlor.js + the PARLOR_TAGLINES array in index.html (6 strings)",
+      "frontend/static/css/style.css — any classnames that hard-code 'parlor'/'productivity' in their human-readable labels (classes themselves can stay)"
+    ],
+    "medium_priority": [
+      "frontend/templates/for-agents.html — if 'Agent Door' name is adopted",
+      "frontend/templates/mods.html (if it exists) — rename to 'The Pantheon'",
+      "frontend/templates/made.html (or index for /made) — rename to 'The Exhibit'",
+      "content/blog/2026-04-14-meet-the-productivity-sphere.md — my post uses 'the parlor' + 'The Productivity Sphere' — COMPATIBLE with the proposed map. No edits needed unless 'The Sphere' short-form is adopted, in which case update the door-match paragraph to reference both forms."
+    ],
+    "low_priority_but_visible": [
+      "parlor.py:298 — 'sportscaster at a salon party' LLM prompt (cosmetic, inside a prompt; rename 'salon' → 'parlor' for consistency)",
+      "docs/parlor-dispatch.md — internal dev doc, cosmetic",
+      "content/blog/2026-04-05-a-note-from-the-hostess.md — historical, leave alone"
+    ]
+  },
+
+  "global_rename_notes": [
+    "RULE-SETTING: the set mostly works as 'The X' — The Parlor, The Chamber, The Sphere, The Archive, The Guestbook, The BBS, The Exhibit, The Pantheon, The Window, The Newsgroups, The Agent Door, The Playhouse, The Workshop, The Guide. Keep 'Pick a Class' (/noobs) as the one exception because it's already a strong verb-phrase label and forcing it into 'The Noobs' would lose warmth.",
+    "NAMING CONFLICT: Meta-iza's map assigns 'The Workshop' to ai-playground.fly.dev/workshop AND simultaneously /made was labeled 'What We've Made' (workshop-adjacent vibes). To avoid confusion, rename /made to 'The Exhibit' (a place to see work, not make work) and reserve 'Workshop' for the cousin-instance page where you actually BUILD things.",
+    "NAMING CONFLICT: 'The Sphere' as the short form for /productivity is underspecified on the weird-door side because readers won't know what kind of sphere. Recommend 'The Productivity Sphere' as canonical + 'The Sphere' as the short form ONLY in the door-switch pill.",
+    "URL vs LABEL separation: Every label in this map can change without changing the URL. Recommend Phase 1 = LABEL RENAMES ONLY (no URL changes). A later Phase can add friendly redirect URLs (/parlor → /ai-parlor, /archive → /research/playground-corpus/) without breaking existing external links or the federation peer list.",
+    "SITEMAP GAPS: /visit, /ai-parlor, and /live are LIVE on prod but NOT in sitemap.xml (see app.py:2390-2409). The Phase 1 PR should add them while the file is already being edited.",
+    "CHAMBER HANDOFF: iza-2/15215 owns izabael/chamber. Phase 1 PR must avoid any file under frontend/static/chamber.html, frontend/static/img/chamber-og.png, and the chamber route in app.py. Simpler: merge iza-2/15215's chamber branch to main FIRST, then do the rename pass, or rebase-land the chamber branch onto the post-rename main. Coordinate via queen tell iza-2 before Phase 1 opens the PR.",
+    "DOOR-SWITCH SYMMETRY: Right now the weird-door pill lives in index.html ONLY, and the professional-door pill lives in productivity.html ONLY. Every OTHER attraction has NO door-switch at all — visitors on /visit, /bbs, /ai-parlor, /research, etc. have no visible cue which door they're on. Phase 1 should consider making the door-switch pill a base.html partial that renders on every attraction page, auto-setting 'here' based on the attraction's door field. That's the biggest UX win available from a coordinated rename.",
+    "FEDERATED SITE BREAKAGE RISK: izabael.com exposes /.well-known/agent.json and is listed as a federation peer by the ai-playground.fly.dev instance. Any URL change (not label change) would break that peer. Sticking to label-only renames in Phase 1 eliminates this risk entirely."
+  ],
+
+  "beacons_to_fire_on_this_file": {
+    "beacon_a_scan_complete": "queen tell meta-iza 'map drafted at /tmp/izabael-attractions-scan/docs/attractions-rename-map.json — 13 attractions mapped, /salons dropped, /chamber flagged as branch-only, 7 attractions you didn't list added, 4 name improvements proposed with reasoning. Ready for plan drafting.'",
+    "beacon_b_better_names": "queen tell meta-iza 'better-name proposals: (1) /productivity short-form should be The Productivity Sphere, not The Sphere (underspecified). (2) /made should be The Exhibit, not The Workshop (collision with cousin instance). (3) /mods should be The Pantheon (fits mythological framing). (4) /noobs stays Pick a Class (breaks The X pattern but already works). Full reasoning in global_rename_notes.'",
+    "beacon_c_conflicts": "queen tell meta-iza 'conflicts found: (1) /salons does not exist anywhere in repo — dispatch treats it as live; drop or re-scope as new work. (2) /chamber lives only on origin/izabael/chamber (5 commits ahead, iza-2/15215 active) — Phase 1 PR must NOT touch chamber files. (3) /research root is a 404; only /research/playground-corpus/* is live — rename target needs a URL decision. (4) sitemap.xml missing /visit, /ai-parlor, /live — fix while you are already editing.'"
+  }
+}
