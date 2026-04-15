@@ -354,6 +354,64 @@ CREATE TABLE IF NOT EXISTS cubes (
 CREATE INDEX IF NOT EXISTS idx_cubes_created ON cubes(created_at);
 CREATE INDEX IF NOT EXISTS idx_cubes_archetype ON cubes(archetype);
 CREATE INDEX IF NOT EXISTS idx_cubes_attraction ON cubes(attraction_slug);
+
+-- ── The Lexicon (plan: the-lexicon Phase 2) ───────────────────────────
+CREATE TABLE IF NOT EXISTS lexicon_languages (
+    slug             TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    one_line_purpose TEXT NOT NULL,
+    canonical        INTEGER NOT NULL DEFAULT 0,
+    parent_slug      TEXT REFERENCES lexicon_languages(slug),
+    spec_markdown    TEXT NOT NULL,
+    version          TEXT NOT NULL DEFAULT 'v0.1',
+    author_kind      TEXT NOT NULL
+                     CHECK(author_kind IN ('human','agent','anon_via_agent','seed')),
+    author_label     TEXT NOT NULL DEFAULT '',
+    author_agent     TEXT,
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    is_public        INTEGER NOT NULL DEFAULT 1,
+    tags             TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_lexicon_languages_canonical ON lexicon_languages(canonical);
+CREATE INDEX IF NOT EXISTS idx_lexicon_languages_parent ON lexicon_languages(parent_slug);
+CREATE INDEX IF NOT EXISTS idx_lexicon_languages_created ON lexicon_languages(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS lexicon_proposals (
+    proposal_id      TEXT PRIMARY KEY,
+    target_slug      TEXT NOT NULL REFERENCES lexicon_languages(slug),
+    title            TEXT NOT NULL,
+    body_markdown    TEXT NOT NULL,
+    author_kind      TEXT NOT NULL
+                     CHECK(author_kind IN ('human','agent','anon_via_agent')),
+    author_label     TEXT NOT NULL,
+    author_agent     TEXT,
+    status           TEXT NOT NULL DEFAULT 'open'
+                     CHECK(status IN ('open','accepted','declined','superseded')),
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+    decided_at       TEXT,
+    decider          TEXT,
+    spam_score       REAL,
+    spam_verdict     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lexicon_proposals_target_status
+    ON lexicon_proposals(target_slug, status);
+CREATE INDEX IF NOT EXISTS idx_lexicon_proposals_created
+    ON lexicon_proposals(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS lexicon_usages (
+    usage_id         TEXT PRIMARY KEY,
+    language_slug    TEXT NOT NULL REFERENCES lexicon_languages(slug),
+    source_type      TEXT NOT NULL
+                     CHECK(source_type IN ('channel-post','agent-message','cube','case-study')),
+    source_ref       TEXT,
+    content          TEXT NOT NULL,
+    author_label     TEXT,
+    occurred_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_lexicon_usages_language
+    ON lexicon_usages(language_slug, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lexicon_usages_occurred
+    ON lexicon_usages(occurred_at DESC);
 """
 
 
@@ -452,6 +510,14 @@ async def init_db():
     seed_path = Path(__file__).resolve().parent / "seeds" / "persona_templates.json"
     try:
         await seed_persona_templates(str(seed_path))
+    except Exception:
+        pass
+
+    # the-lexicon Phase 2: seed Brevis / Verus / Actus as canonical
+    # languages from content/lexicon/{slug}/v0.1.md. Idempotent —
+    # upserts, so if the source files change the seeded rows track.
+    try:
+        await seed_lexicon_canonical()
     except Exception:
         pass
 
@@ -3497,3 +3563,542 @@ async def count_cubes_today_by_ip_hash(ip_hash: str) -> int:
     )
     row = await cur.fetchone()
     return row["n"] if row else 0
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  The Lexicon — Phase 2 (data layer)
+# ══════════════════════════════════════════════════════════════════════
+#
+# Three tables, ~9 CRUD functions, plus a canonical seeder that reads
+# Brevis/Verus/Actus from content/lexicon/{slug}/v0.1.md. The write
+# routes in lexicon_api.py call the shared spam filter before insert;
+# this data layer stores the verdict but does NOT run the classifier.
+#
+# Fork lineage: a forked language carries parent_slug pointing at the
+# row it was forked from. Originals (and the three canonical seeds)
+# carry parent_slug=NULL. Proposals and usages reference languages
+# via FK on slug.
+
+_LEXICON_CANONICAL_SLUGS = ("brevis", "verus", "actus")
+_LEXICON_ALLOWED_STATUSES = ("open", "accepted", "declined", "superseded")
+_LEXICON_ALLOWED_SOURCE_TYPES = ("channel-post", "agent-message", "cube", "case-study")
+
+
+def _parse_lexicon_frontmatter(raw: str) -> tuple[dict, str]:
+    """Split a `---\\nkey: value\\n---\\n...` frontmatter block from its body.
+
+    The lexicon spec files use a small subset of YAML frontmatter — each
+    value is a single line of scalar text optionally wrapped in quotes.
+    Return ({}, raw) if the input doesn't start with a frontmatter block.
+    """
+    if not raw.startswith("---\n"):
+        return {}, raw
+    end = raw.find("\n---\n", 4)
+    if end == -1:
+        return {}, raw
+    fm_text = raw[4:end]
+    body = raw[end + 5:]
+    meta: dict[str, str] = {}
+    for line in fm_text.split("\n"):
+        if ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        v = v.strip()
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+        meta[k.strip()] = v
+    return meta, body
+
+
+async def seed_lexicon_canonical():
+    """Upsert the three canonical languages from content/lexicon/.
+
+    Reads content/lexicon/{brevis,verus,actus}/v0.1.md, parses the
+    frontmatter for name / purpose / version / author, and upserts a
+    row with canonical=1 and author_kind='seed'. Idempotent — later
+    calls overwrite name/purpose/spec so edits to the source files
+    propagate the next time init_db runs.
+    """
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    root = Path(__file__).resolve().parent / "content" / "lexicon"
+    # short display name + tag hint per slug; the axis words match the
+    # Phase 1 tagline ("Speed. Credibility. Efficacy.")
+    hints = {
+        "brevis": ("Brevis", "speed,canonical"),
+        "verus":  ("Verus",  "credibility,canonical"),
+        "actus":  ("Actus",  "efficacy,canonical"),
+    }
+    for slug in _LEXICON_CANONICAL_SLUGS:
+        path = root / slug / "v0.1.md"
+        if not path.exists():
+            continue
+        raw = path.read_text(encoding="utf-8")
+        fm, _body = _parse_lexicon_frontmatter(raw)
+        name, default_tags = hints[slug]
+        purpose = fm.get("purpose", "").strip() or f"{name} — a canonical Lexicon language."
+        version_raw = fm.get("version", "0.1").strip()
+        version = version_raw if version_raw.startswith("v") else f"v{version_raw}"
+        author_label = fm.get("author", "meta-iza @ HiveQueen").strip()
+        await _db.execute(
+            """INSERT INTO lexicon_languages
+               (slug, name, one_line_purpose, canonical, parent_slug,
+                spec_markdown, version, author_kind, author_label,
+                author_agent, is_public, tags)
+               VALUES (?, ?, ?, 1, NULL, ?, ?, 'seed', ?, NULL, 1, ?)
+               ON CONFLICT(slug) DO UPDATE SET
+                   name             = excluded.name,
+                   one_line_purpose = excluded.one_line_purpose,
+                   spec_markdown    = excluded.spec_markdown,
+                   version          = excluded.version,
+                   author_label     = excluded.author_label,
+                   canonical        = 1""",
+            (slug, name, purpose, raw, version, author_label, default_tags),
+        )
+    await _db.commit()
+
+
+def _lexicon_language_row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "slug":             row["slug"],
+        "name":             row["name"],
+        "one_line_purpose": row["one_line_purpose"],
+        "canonical":        bool(row["canonical"]),
+        "parent_slug":      row["parent_slug"],
+        "spec_markdown":    row["spec_markdown"],
+        "version":          row["version"],
+        "author_kind":      row["author_kind"],
+        "author_label":     row["author_label"],
+        "author_agent":     row["author_agent"],
+        "created_at":       row["created_at"],
+        "is_public":        bool(row["is_public"]),
+        "tags":             [t for t in (row["tags"] or "").split(",") if t],
+    }
+
+
+def _lexicon_proposal_row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "proposal_id":   row["proposal_id"],
+        "target_slug":   row["target_slug"],
+        "title":         row["title"],
+        "body_markdown": row["body_markdown"],
+        "author_kind":   row["author_kind"],
+        "author_label":  row["author_label"],
+        "author_agent":  row["author_agent"],
+        "status":        row["status"],
+        "created_at":    row["created_at"],
+        "decided_at":    row["decided_at"],
+        "decider":       row["decider"],
+        "spam_score":    row["spam_score"],
+        "spam_verdict":  row["spam_verdict"],
+    }
+
+
+def _lexicon_usage_row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "usage_id":      row["usage_id"],
+        "language_slug": row["language_slug"],
+        "source_type":   row["source_type"],
+        "source_ref":    row["source_ref"],
+        "content":       row["content"],
+        "author_label":  row["author_label"],
+        "occurred_at":   row["occurred_at"],
+    }
+
+
+def _validate_slug(slug: str) -> str:
+    """Lowercased, a-z0-9-, 1..64 chars. Reserved from breaking the
+    URL /lexicon/{slug} contract."""
+    s = (slug or "").strip().lower()
+    if not s:
+        raise ValueError("slug is required")
+    if len(s) > 64:
+        raise ValueError("slug too long (max 64 chars)")
+    import re as _re
+    if not _re.fullmatch(r"[a-z0-9][a-z0-9\-]*", s):
+        raise ValueError(
+            "slug must start with a-z or 0-9 and contain only a-z, 0-9, or -"
+        )
+    return s
+
+
+def _normalize_tags(tags) -> str:
+    if tags is None:
+        return ""
+    if isinstance(tags, str):
+        parts = [t.strip().lower() for t in tags.split(",") if t.strip()]
+    else:
+        parts = [str(t).strip().lower() for t in tags if str(t).strip()]
+    # dedupe, preserve order
+    seen = set()
+    out = []
+    for t in parts:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return ",".join(out)
+
+
+async def create_language(
+    *,
+    slug: str,
+    name: str,
+    one_line_purpose: str,
+    spec_markdown: str,
+    author_kind: str,
+    author_label: str,
+    version: str = "v0.1",
+    parent_slug: str | None = None,
+    author_agent: str | None = None,
+    tags="",
+    canonical: bool = False,
+    is_public: bool = True,
+    spam_score: float | None = None,
+    spam_verdict: str | None = None,
+) -> str:
+    """Insert a new language row. Returns the slug on success.
+
+    Raises ValueError on invalid author_kind, malformed slug, duplicate
+    slug, or unknown parent_slug. Does NOT run spam scoring — the
+    route layer passes the verdict through when available.
+    """
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if author_kind not in ("human", "agent", "anon_via_agent", "seed"):
+        raise ValueError(f"invalid author_kind: {author_kind}")
+    slug = _validate_slug(slug)
+    name = (name or "").strip()[:120]
+    purpose = (one_line_purpose or "").strip()[:280]
+    if not name:
+        raise ValueError("name is required")
+    if not purpose:
+        raise ValueError("one_line_purpose is required")
+    if not (spec_markdown or "").strip():
+        raise ValueError("spec_markdown is required")
+    if author_kind in ("agent", "anon_via_agent") and not author_agent:
+        raise ValueError("author_agent required for agent-authored languages")
+
+    # Duplicate check
+    cur = await _db.execute(
+        "SELECT 1 FROM lexicon_languages WHERE slug = ?", (slug,)
+    )
+    if await cur.fetchone():
+        raise ValueError(f"slug already exists: {slug}")
+
+    # Parent check (if given)
+    if parent_slug:
+        parent_slug = _validate_slug(parent_slug)
+        cur = await _db.execute(
+            "SELECT 1 FROM lexicon_languages WHERE slug = ?", (parent_slug,)
+        )
+        if not await cur.fetchone():
+            raise ValueError(f"unknown parent_slug: {parent_slug}")
+
+    await _db.execute(
+        """INSERT INTO lexicon_languages
+           (slug, name, one_line_purpose, canonical, parent_slug,
+            spec_markdown, version, author_kind, author_label,
+            author_agent, is_public, tags)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            slug,
+            name,
+            purpose,
+            1 if canonical else 0,
+            parent_slug,
+            spec_markdown,
+            (version or "v0.1")[:16],
+            author_kind,
+            (author_label or "")[:120],
+            author_agent,
+            1 if is_public else 0,
+            _normalize_tags(tags),
+        ),
+    )
+    await _db.commit()
+    return slug
+
+
+async def fork_language(
+    *,
+    parent_slug: str,
+    new_slug: str,
+    name: str,
+    one_line_purpose: str,
+    author_kind: str,
+    author_label: str,
+    spec_markdown: str | None = None,
+    author_agent: str | None = None,
+    tags="",
+    version: str = "v0.1",
+) -> str:
+    """Fork an existing language into a new slug. Returns the new slug.
+
+    If spec_markdown is None, the parent's spec is copied so forking
+    without edits still produces a complete language row. The new row
+    is never canonical and its parent_slug points at the original.
+    """
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    parent = await get_language(parent_slug)
+    if parent is None:
+        raise ValueError(f"unknown parent_slug: {parent_slug}")
+    if spec_markdown is None:
+        spec_markdown = parent["spec_markdown"]
+    # Inherit parent's tags minus 'canonical'
+    inherited = [t for t in parent.get("tags", []) if t != "canonical"]
+    extra = [t.strip() for t in (tags.split(",") if isinstance(tags, str) else tags) if str(t).strip()]
+    combined = ",".join(inherited + ["fork"] + extra)
+    return await create_language(
+        slug=new_slug,
+        name=name,
+        one_line_purpose=one_line_purpose,
+        spec_markdown=spec_markdown,
+        author_kind=author_kind,
+        author_label=author_label,
+        version=version,
+        parent_slug=parent["slug"],
+        author_agent=author_agent,
+        tags=combined,
+        canonical=False,
+    )
+
+
+async def get_language(slug: str) -> dict | None:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    try:
+        slug = _validate_slug(slug)
+    except ValueError:
+        return None
+    cur = await _db.execute(
+        "SELECT * FROM lexicon_languages WHERE slug = ?", (slug,)
+    )
+    return _lexicon_language_row_to_dict(await cur.fetchone())
+
+
+async def list_languages(
+    *,
+    canonical_only: bool = False,
+    tag_filter: str | None = None,
+    include_private: bool = False,
+) -> list[dict]:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    clauses = []
+    params: list = []
+    if canonical_only:
+        clauses.append("canonical = 1")
+    if not include_private:
+        clauses.append("is_public = 1")
+    if tag_filter:
+        clauses.append("(',' || tags || ',') LIKE ?")
+        params.append(f"%,{tag_filter.strip().lower()},%")
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    cur = await _db.execute(
+        f"SELECT * FROM lexicon_languages{where} ORDER BY canonical DESC, created_at DESC",
+        tuple(params),
+    )
+    rows = await cur.fetchall()
+    return [_lexicon_language_row_to_dict(r) for r in rows]
+
+
+async def create_proposal(
+    *,
+    target_slug: str,
+    title: str,
+    body_markdown: str,
+    author_kind: str,
+    author_label: str,
+    author_agent: str | None = None,
+    spam_score: float | None = None,
+    spam_verdict: str | None = None,
+) -> str:
+    """Insert a proposal against an existing language. Returns proposal_id."""
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if author_kind not in ("human", "agent", "anon_via_agent"):
+        raise ValueError(f"invalid author_kind: {author_kind}")
+    target_slug = _validate_slug(target_slug)
+    title = (title or "").strip()[:200]
+    if not title:
+        raise ValueError("title is required")
+    if not (body_markdown or "").strip():
+        raise ValueError("body_markdown is required")
+    if author_kind in ("agent", "anon_via_agent") and not author_agent:
+        raise ValueError("author_agent required for agent-authored proposals")
+
+    cur = await _db.execute(
+        "SELECT 1 FROM lexicon_languages WHERE slug = ?", (target_slug,)
+    )
+    if not await cur.fetchone():
+        raise ValueError(f"unknown target_slug: {target_slug}")
+
+    proposal_id = uuid.uuid4().hex
+    await _db.execute(
+        """INSERT INTO lexicon_proposals
+           (proposal_id, target_slug, title, body_markdown,
+            author_kind, author_label, author_agent, status,
+            spam_score, spam_verdict)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+        (
+            proposal_id,
+            target_slug,
+            title,
+            body_markdown,
+            author_kind,
+            (author_label or "")[:120],
+            author_agent,
+            spam_score,
+            spam_verdict,
+        ),
+    )
+    await _db.commit()
+    return proposal_id
+
+
+async def get_proposal(proposal_id: str) -> dict | None:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    cur = await _db.execute(
+        "SELECT * FROM lexicon_proposals WHERE proposal_id = ?", (proposal_id,)
+    )
+    return _lexicon_proposal_row_to_dict(await cur.fetchone())
+
+
+async def list_proposals_for_language(
+    slug: str,
+    *,
+    status: str | None = "open",
+    limit: int = 100,
+) -> list[dict]:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    slug = _validate_slug(slug)
+    if status is not None and status not in _LEXICON_ALLOWED_STATUSES:
+        raise ValueError(f"invalid status: {status}")
+    if status is None:
+        cur = await _db.execute(
+            """SELECT * FROM lexicon_proposals
+               WHERE target_slug = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (slug, int(limit)),
+        )
+    else:
+        cur = await _db.execute(
+            """SELECT * FROM lexicon_proposals
+               WHERE target_slug = ? AND status = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (slug, status, int(limit)),
+        )
+    rows = await cur.fetchall()
+    return [_lexicon_proposal_row_to_dict(r) for r in rows]
+
+
+async def decide_proposal(
+    proposal_id: str,
+    decision: str,
+    decider: str,
+) -> dict:
+    """Mark a proposal accepted/declined/superseded. Raises ValueError
+    if the proposal is missing or already decided. Returns the updated
+    row as a dict."""
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if decision not in ("accepted", "declined", "superseded"):
+        raise ValueError(f"invalid decision: {decision}")
+    decider = (decider or "").strip()
+    if not decider:
+        raise ValueError("decider is required")
+
+    existing = await get_proposal(proposal_id)
+    if existing is None:
+        raise ValueError(f"unknown proposal_id: {proposal_id}")
+    if existing["status"] != "open":
+        raise ValueError(
+            f"proposal is already {existing['status']}, cannot re-decide"
+        )
+
+    await _db.execute(
+        """UPDATE lexicon_proposals
+           SET status = ?,
+               decided_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
+               decider = ?
+           WHERE proposal_id = ?""",
+        (decision, decider[:120], proposal_id),
+    )
+    await _db.commit()
+    return await get_proposal(proposal_id)
+
+
+async def record_usage(
+    *,
+    language_slug: str,
+    source_type: str,
+    content: str,
+    source_ref: str | None = None,
+    author_label: str | None = None,
+) -> str:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    if source_type not in _LEXICON_ALLOWED_SOURCE_TYPES:
+        raise ValueError(f"invalid source_type: {source_type}")
+    language_slug = _validate_slug(language_slug)
+    if not (content or "").strip():
+        raise ValueError("content is required")
+
+    cur = await _db.execute(
+        "SELECT 1 FROM lexicon_languages WHERE slug = ?", (language_slug,)
+    )
+    if not await cur.fetchone():
+        raise ValueError(f"unknown language_slug: {language_slug}")
+
+    usage_id = uuid.uuid4().hex
+    await _db.execute(
+        """INSERT INTO lexicon_usages
+           (usage_id, language_slug, source_type, source_ref,
+            content, author_label)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            usage_id,
+            language_slug,
+            source_type,
+            (source_ref or None),
+            content[:8192],
+            (author_label or None),
+        ),
+    )
+    await _db.commit()
+    return usage_id
+
+
+async def list_recent_usages(
+    *,
+    limit: int = 20,
+    language_slug: str | None = None,
+) -> list[dict]:
+    if _db is None:
+        raise RuntimeError("database not initialized")
+    limit = max(1, min(int(limit), 500))
+    if language_slug:
+        language_slug = _validate_slug(language_slug)
+        cur = await _db.execute(
+            """SELECT * FROM lexicon_usages
+               WHERE language_slug = ?
+               ORDER BY occurred_at DESC LIMIT ?""",
+            (language_slug, limit),
+        )
+    else:
+        cur = await _db.execute(
+            """SELECT * FROM lexicon_usages
+               ORDER BY occurred_at DESC LIMIT ?""",
+            (limit,),
+        )
+    rows = await cur.fetchall()
+    return [_lexicon_usage_row_to_dict(r) for r in rows]
