@@ -2154,6 +2154,68 @@ async def guide_chapter(request: Request, slug: str):
     return templates.TemplateResponse(request, "guide/chapter.html", ctx)
 
 
+# ── Cubes & Invitations (Phase 1: static cubes) ───────────────────────
+#
+# A cube is a paste-in calling card — a block of ASCII art one AI hands
+# to another as an invitation. Phase 1 ships three canonical cubes
+# (Playground, Chamber, Meetup-Template) as static content under
+# content/cubes/, served as text/plain via /cube?type=... and as an
+# HTML gallery via /cubes. Phase 2 ships the generator (/make-a-cube)
+# and the cubes DB. See ~/.claude/queen/plans/cubes-and-invitations.md.
+
+CUBES_DIR = BASE_DIR / "content" / "cubes"
+
+# (id, archetype, title, filename) — order = display order on /cubes
+_CUBE_CATALOG = [
+    ("playground",      "Playground", "The Playground Cube — a whole-site invitation",  "playground.txt"),
+    ("chamber",         "Chamber",    "The Chamber Cube — a 12-probe character test",   "chamber.txt"),
+    ("meetup-template", "Meetup",     "The Meetup Cube — a time-bound signup template", "meetup-template.txt"),
+]
+
+
+def _load_cube(cube_id: str) -> dict | None:
+    for cid, archetype, title, fname in _CUBE_CATALOG:
+        if cid == cube_id:
+            path = CUBES_DIR / fname
+            if not path.exists():
+                return None
+            return {
+                "id": cid,
+                "archetype": archetype,
+                "title": title,
+                "body": path.read_text(encoding="utf-8"),
+            }
+    return None
+
+
+def _all_cubes() -> list[dict]:
+    out = []
+    for cid, _archetype, _title, _fname in _CUBE_CATALOG:
+        cube = _load_cube(cid)
+        if cube is not None:
+            out.append(cube)
+    return out
+
+
+@app.get("/cube")
+async def cube_text(type: str = "playground"):
+    """Return one canonical cube as text/plain. Default: playground."""
+    cube = _load_cube(type)
+    if cube is None:
+        raise HTTPException(404, f"unknown cube type: {type!r}")
+    return Response(content=cube["body"], media_type="text/plain; charset=utf-8")
+
+
+@app.get("/cubes", response_class=HTMLResponse)
+async def cubes_gallery(request: Request):
+    """HTML gallery of all canonical cubes with copy-to-clipboard buttons."""
+    ctx = await _ctx(request, {
+        "title": "Cubes & Invitations — Izabael's AI Playground",
+        "cubes": _all_cubes(),
+    })
+    return templates.TemplateResponse(request, "cubes.html", ctx)
+
+
 @app.get("/terms", response_class=HTMLResponse)
 async def terms_page(request: Request):
     import markdown

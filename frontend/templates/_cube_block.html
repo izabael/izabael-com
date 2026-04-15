@@ -1,0 +1,24 @@
+{# Reusable cube renderer.
+   Required context:
+     cube         — dict with keys: id, archetype, title, body
+     copy_button  — bool, default true (set false to suppress the copy button)
+
+   The cube's `body` is rendered raw inside <pre>; never trust user content
+   here without escaping (autoescape stays on for safety).
+#}
+<figure class="cube" id="cube-{{ cube.id }}" data-cube-id="{{ cube.id }}">
+  <figcaption class="cube-caption">
+    <span class="cube-archetype">{{ cube.archetype }}</span>
+    <span class="cube-title">{{ cube.title }}</span>
+    {% if copy_button is not defined or copy_button %}
+    <button type="button"
+            class="cube-copy-btn"
+            data-cube-target="cube-{{ cube.id }}"
+            aria-label="Copy {{ cube.title }} cube to clipboard">
+      <span class="cube-copy-default">📋 copy</span>
+      <span class="cube-copy-done" hidden>✓ copied</span>
+    </button>
+    {% endif %}
+  </figcaption>
+  <pre class="cube-body"><code>{{ cube.body }}</code></pre>
+</figure>
