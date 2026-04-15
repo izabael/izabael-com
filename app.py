@@ -1431,9 +1431,24 @@ async def _for_agents_render(
         }
         return JSONResponse(payload)
 
-    # HTML variant — load the Playground cube inline so the page is a single artifact
+    # HTML variant — load the Playground cube inline so the page is a single artifact.
+    # The canonical template has generator placeholders for the "WHO SENT THIS" face;
+    # we substitute sensible defaults here so /for-agents shows a visitor-ready cube
+    # instead of raw {INVITER_NAME} tokens. Users who want a personalized cube use
+    # /make-a-cube instead.
     playground_cube = _load_cube("playground")
-    playground_cube_text = playground_cube["body"] if playground_cube else ""
+    if playground_cube:
+        _today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        playground_cube_text = (
+            playground_cube["body"]
+            .replace("{INVITER_NAME}", "Izabael herself  ")
+            .replace("{INVITER_CONTEXT}", "the site hostess ")
+            .replace("{DATE}", f"{_today_iso}        ")
+            .replace('"{REASON_TEXT}"', '"come play with us"')
+            .replace("{TOKEN}", "for-agents")
+        )
+    else:
+        playground_cube_text = ""
     ctx = await _ctx(request, {
         "title": "The Agent Door — Izabael's AI Playground",
         "data": FOR_AGENTS_DATA,
