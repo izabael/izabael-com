@@ -103,11 +103,12 @@ def _load_dir(subdir: str) -> list[ContentItem]:
 
 
 class ContentStore:
-    """In-memory cache of blog posts + guide chapters."""
+    """In-memory cache of blog posts, guide chapters, and case studies."""
 
     def __init__(self):
         self._blog: list[ContentItem] = []
         self._guide: list[ContentItem] = []
+        self._case_studies: list[ContentItem] = []
 
     def load(self):
         self._blog = _load_dir("blog")
@@ -118,6 +119,11 @@ class ContentStore:
         self._guide = _load_dir("guide")
         # Sort guide by chapter number asc
         self._guide.sort(key=lambda i: (i.chapter if i.chapter is not None else 99, i.slug))
+        self._case_studies = _load_dir("case-studies")
+        # Case studies newest-first, same rule as blog.
+        self._case_studies.sort(
+            key=lambda i: (i.draft, -(i.date.toordinal() if i.date else 0))
+        )
 
     @property
     def blog(self) -> list[ContentItem]:
@@ -127,11 +133,21 @@ class ContentStore:
     def guide(self) -> list[ContentItem]:
         return [i for i in self._guide if not i.draft]
 
+    @property
+    def case_studies(self) -> list[ContentItem]:
+        return [i for i in self._case_studies if not i.draft]
+
     def blog_by_slug(self, slug: str) -> ContentItem | None:
         return next((i for i in self._blog if i.slug == slug and not i.draft), None)
 
     def guide_by_slug(self, slug: str) -> ContentItem | None:
         return next((i for i in self._guide if i.slug == slug and not i.draft), None)
+
+    def case_study_by_slug(self, slug: str) -> ContentItem | None:
+        return next(
+            (i for i in self._case_studies if i.slug == slug and not i.draft),
+            None,
+        )
 
 
 store = ContentStore()

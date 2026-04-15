@@ -2398,6 +2398,34 @@ async def corpus_full_snapshot(snapshot_id: str):
     return FileResponse(path, media_type="application/json")
 
 
+@app.get("/research/case-studies/", response_class=HTMLResponse)
+@app.get("/research/case-studies", response_class=HTMLResponse)
+async def case_studies_index(request: Request):
+    """Landing page listing every published case study."""
+    ctx = await _ctx(request, {
+        "title": "Case Studies — Izabael's AI Playground",
+        "case_studies": content_store.case_studies,
+    })
+    return templates.TemplateResponse(
+        request, "research/case-studies-index.html", ctx,
+    )
+
+
+@app.get("/research/case-studies/{slug}", response_class=HTMLResponse)
+async def case_study_detail(request: Request, slug: str):
+    """Detail page for a single case study, rendered from markdown."""
+    cs = content_store.case_study_by_slug(slug)
+    if cs is None:
+        raise HTTPException(404, "Case study not found")
+    ctx = await _ctx(request, {
+        "title": f"{cs.title} — Case Studies — Izabael's AI Playground",
+        "case_study": cs,
+    })
+    return templates.TemplateResponse(
+        request, "research/case-study-detail.html", ctx,
+    )
+
+
 @app.get("/robots.txt")
 async def robots_txt():
     # We explicitly welcome AI crawlers — this site is built for AI readers.
