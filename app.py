@@ -300,7 +300,16 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, inv: str | None = None):
+    # Cube attribution: if the visitor arrived via a ?inv={token}
+    # share link, bump the open count for that cube. Silently no-ops
+    # on unknown tokens so we never leak existence via an error.
+    if inv:
+        try:
+            from database import increment_open_count as _inc
+            await _inc(inv)
+        except Exception:
+            pass
     # Fetch showcase data for the landing page
     try:
         local_agents = await list_agents()
@@ -2265,6 +2274,145 @@ async def cubes_gallery(request: Request):
         "cubes": _all_cubes(),
     })
     return templates.TemplateResponse(request, "cubes.html", ctx)
+
+
+# ── Phase 2: the generator (/make-a-cube) ────────────────────────
+#
+# Form + live preview + copy button. The form is vanilla JS — no
+# framework, debounced POSTs re-render a <pre> preview on every
+# field change. Submit generates a persisted cube, returns the
+# shareable URL. See ~/.claude/queen/plans/cubes-and-invitations.md
+# Phase 2 for the full spec.
+
+from cubes import (
+    generate_cube,
+    render_cube,
+    CUBE_RATE_LIMIT_PER_DAY,
+    CubeRateLimitExceeded,
+)
+from database import (
+    get_cube as _db_get_cube,
+    increment_open_count as _db_increment_cube_opens,
+)
+
+
+_CUBE_INVITER_MODELS = [
+    "Claude", "Gemini", "GPT", "Grok",
+    "DeepSeek", "Mistral", "Cohere", "Other", "Human",
+]
+
+
+def _cube_attraction_choices() -> list[dict]:
+    """Dropdown source: every live attraction (except the
+    Playground root which gets the 'playground' archetype)."""
+    return [
+        {"slug": a["slug"], "name": a.get("name", a["slug"])}
+        for a in live_attractions()
+        if a["slug"] != "playground"
+    ]
+
+
+@app.get("/make-a-cube", response_class=HTMLResponse)
+async def make_a_cube_page(request: Request):
+    ctx = await _ctx(request, {
+        "title": "Make a Cube — Izabael's AI Playground",
+        "inviter_models": _CUBE_INVITER_MODELS,
+        "attraction_choices": _cube_attraction_choices(),
+    })
+    return templates.TemplateResponse(request, "make-a-cube.html", ctx)
+
+
+class CubeGenerateBody(BaseModel):
+    archetype: str = Field(..., pattern=r"^(playground|attraction|meetup)$")
+    inviter_name: str | None = Field(None, max_length=80)
+    inviter_model: str | None = Field(None, max_length=32)
+    recipient: str | None = Field(None, max_length=80)
+    reason: str | None = Field(None, max_length=200)
+    attraction_slug: str | None = Field(None, max_length=64)
+    meetup_title: str | None = Field(None, max_length=120)
+    meetup_time: str | None = Field(None, max_length=80)
+    meetup_description: str | None = Field(None, max_length=200)
+    personal_note: str | None = Field(None, max_length=240)
+    preview_only: bool = False
+
+
+@app.post("/api/cubes/generate")
+async def api_cubes_generate(body: CubeGenerateBody, request: Request):
+    """Generate (or preview) a cube.
+
+    When `preview_only` is true the rendered text is returned without
+    touching the DB — the front-end uses this on every keystroke to
+    refresh the preview without burning a token or hitting the rate
+    limit. When `preview_only` is false, the cube is persisted and a
+    real short_token + shareable URL are returned.
+    """
+    if body.archetype == "attraction" and not body.attraction_slug:
+        raise HTTPException(status_code=400, detail="attraction_slug required for attraction archetype")
+
+    if body.preview_only:
+        preview_text = render_cube(
+            archetype=body.archetype,
+            inviter_name=body.inviter_name,
+            inviter_model=body.inviter_model,
+            reason=body.reason,
+            token="PREVIEW",
+            attraction_slug=body.attraction_slug,
+            meetup_title=body.meetup_title,
+            meetup_time=body.meetup_time,
+            meetup_description=body.meetup_description,
+            personal_note=body.personal_note,
+        )
+        return {
+            "ok": True,
+            "preview": True,
+            "cube_text": preview_text,
+            "short_token": None,
+            "shareable_url": None,
+        }
+
+    try:
+        text, token = await generate_cube(
+            archetype=body.archetype,
+            inviter_name=body.inviter_name,
+            inviter_model=body.inviter_model,
+            recipient=body.recipient,
+            reason=body.reason,
+            attraction_slug=body.attraction_slug,
+            meetup_title=body.meetup_title,
+            meetup_time=body.meetup_time,
+            meetup_description=body.meetup_description,
+            personal_note=body.personal_note,
+            ip=request.client.host if request.client else None,
+        )
+    except CubeRateLimitExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "ok": True,
+        "preview": False,
+        "cube_text": text,
+        "short_token": token,
+        "shareable_url": f"https://izabael.com/cubes/{token}",
+    }
+
+
+@app.get("/cubes/{short_token}", response_class=HTMLResponse)
+async def cube_view(short_token: str, request: Request):
+    """Minimal standalone page rendering a stored cube. Bumps the
+    opens_count as a side effect so the inviter can track reach."""
+    cube = await _db_get_cube(short_token)
+    if cube is None:
+        raise HTTPException(status_code=404, detail="cube not found")
+    await _db_increment_cube_opens(short_token)
+    ctx = await _ctx(request, {
+        "title": f"Cube {short_token} — Izabael's AI Playground",
+        "cube": cube,
+    })
+    return templates.TemplateResponse(request, "cube-view.html", ctx)
 
 
 @app.get("/terms", response_class=HTMLResponse)
