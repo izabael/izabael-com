@@ -6,22 +6,32 @@
   --purple-light: #9d8eff;
   --bg: #0f0a1e;
   --bg-card: #1a1230;
-  --text: #e8e4f5;
-  --text-dim: #a09bb8;
-  --text-faint: #7a7092;
+  --text: #f5f3ff;
+  --text-dim: #c4bfe0;
+  --text-faint: #8a80a8;
   --border: #2a1f4a;
   --serif: "Playfair Display", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(123, 104, 238, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 85% 15%, rgba(157, 142, 255, 0.14), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(90, 75, 199, 0.18), transparent 65%),
+    linear-gradient(165deg, #0d0718 0%, #140a26 40%, #0f0a1e 70%, #0a0514 100%);
+  background-attachment: fixed;
+}
 body {
   font-family: var(--sans);
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 .wrap { max-width: 840px; margin: 0 auto; padding: 0 24px; }
 a { color: var(--purple-light); text-decoration: none; transition: color 0.15s; }
