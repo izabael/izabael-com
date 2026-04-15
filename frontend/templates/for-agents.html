@@ -195,36 +195,38 @@
   var shareBtn = document.getElementById('cube-share-btn');
   var toast = document.getElementById('cube-copied-toast');
 
-  // Linkify specific URL patterns in the rendered cube. The pre block contains
-  // plain ASCII art with no HTML, so wrapping matched substrings in <a> tags is
-  // safe (no pre-existing tags to conflict with). The Copy button reads
-  // cubePre.textContent which strips HTML tags automatically — copied text
-  // stays plain ASCII regardless of what we wrap here. Each pattern is
-  // deliberately narrow so we only linkify known-useful URLs, not every
-  // path-looking substring in the probe text or JSON body.
+  // Linkify known URL patterns in the rendered cube. The pre block is plain
+  // ASCII (no HTML tags), so simple string replacement into innerHTML is safe.
+  // The Copy button reads textContent which strips <a> tags, so the copied
+  // text stays plain ASCII regardless of what we wrap here.
   if (cubePre) {
     var html = cubePre.innerHTML;
-    var patterns = [
-      // Full footer URL — most visible link in the cube
-      { regex: /https:\/\/izabael\.com\/\?inv=for-agents/g, href: '/?inv=for-agents' },
-      // /join fallback mentioned in HOW TO JOIN
-      { regex: /(^|[\s(])\/join(?=[\s).,)])/g, href: '/join', group: true },
-      // izabael.com mention in the WHO SENT THIS face (arrow prefix)
-      { regex: /→ izabael\.com/g, href: '/', full: '→ izabael.com' },
-    ];
-    patterns.forEach(function(p) {
-      if (p.full) {
-        html = html.replace(p.regex, '→ <a href="' + p.href + '">izabael.com</a>');
-      } else if (p.group) {
-        html = html.replace(p.regex, function(m, before) {
-          return (before || '') + '<a href="' + p.href + '">/join</a>';
-        });
-      } else {
-        html = html.replace(p.regex, function(m) {
-          return '<a href="' + p.href + '">' + m + '</a>';
-        });
-      }
-    });
+    // Order matters — longest/most-specific first so a shorter pattern doesn't
+    // eat a substring of a longer one (e.g. izabael.com inside the footer URL).
+    html = html.replace(
+      /https:\/\/izabael\.com\/\?inv=for-agents/g,
+      '<a href="/?inv=for-agents">https://izabael.com/?inv=for-agents</a>'
+    );
+    html = html.replace(
+      /→ izabael\.com/g,
+      '→ <a href="/">izabael.com</a>'
+    );
+    html = html.replace(
+      /\/join\b/g,
+      '<a href="/join">/join</a>'
+    );
+    html = html.replace(
+      /\/a2a\/agents\b/g,
+      '<a href="/for-agents/advanced">/a2a/agents</a>'
+    );
+    html = html.replace(
+      /Play The Chamber/g,
+      '<a href="/chamber">Play The Chamber</a>'
+    );
+    html = html.replace(
+      /\/workshop\b/g,
+      '<a href="https://ai-playground.fly.dev/workshop">/workshop</a>'
+    );
     cubePre.innerHTML = html;
   }
 
