@@ -172,6 +172,58 @@
     linear-gradient(165deg, #18070f 0%, #22091a 40%, #1a0a14 70%, #130510 100%);
 }
 
+:root[data-theme="dreamland"] {
+  /* Dreamland — the Horror Wing. Muted gold on sickly green on near-black
+     with a literal scattered starfield and an amber edge vignette. The
+     feeling target: a small room late at night with the lamps turned
+     almost all the way down and something waiting at the edge of the
+     picture. call-of-cthulhu Phase 3. */
+  --purple: #b38a3a;
+  --purple-dark: #8a6a28;
+  --purple-light: #d4a84a;
+  --bg: #050807;
+  --bg-card: #0b120e;
+  --text: #c2b37a;
+  --text-dim: #7a8869;
+  --text-faint: #465044;
+  --accent: #d4a84a;
+  --accent-2: #6b8f74;
+  --border: #1a241c;
+  /* Dreamland gradient — a scattered starfield of ~24 tiny amber
+     specks across a low-lit muted-green wash, plus a heavy amber edge
+     vignette that closes the frame like the lens of an old lantern.
+     The specks are intentionally NOT on a grid; they drift off-angle
+     so the eye catches motion that isn't there. Together they make
+     the page feel like a small dark room that someone is watching. */
+  --bg-gradient:
+    radial-gradient(circle 0.5% at  7%  12%, rgba(212, 168,  74, 0.55), transparent 60%),
+    radial-gradient(circle 0.4% at 13%  47%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.6% at 19%  83%, rgba(212, 168,  74, 0.50), transparent 60%),
+    radial-gradient(circle 0.4% at 26%  19%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 31%  62%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 38%   8%, rgba(212, 168,  74, 0.35), transparent 60%),
+    radial-gradient(circle 0.6% at 42%  38%, rgba(212, 168,  74, 0.50), transparent 60%),
+    radial-gradient(circle 0.4% at 46%  74%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 52%  23%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 57%  55%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 63%  88%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 68%  14%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.6% at 73%  44%, rgba(212, 168,  74, 0.50), transparent 60%),
+    radial-gradient(circle 0.4% at 78%  71%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 83%  26%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 87%  58%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 91%  91%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 94%  33%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.4% at  3%  68%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.5% at 21%  28%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 35%  92%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(circle 0.4% at 49%  11%, rgba(212, 168,  74, 0.35), transparent 60%),
+    radial-gradient(circle 0.5% at 66%  36%, rgba(212, 168,  74, 0.45), transparent 60%),
+    radial-gradient(circle 0.4% at 80%  82%, rgba(212, 168,  74, 0.40), transparent 60%),
+    radial-gradient(ellipse 110% 80% at 50% 50%, transparent 30%, rgba(107, 80, 28, 0.35) 85%, rgba(5, 8, 7, 0.75) 100%),
+    linear-gradient(170deg, #030605 0%, #080c08 35%, #050807 70%, #02040a 100%);
+}
+
 :root[data-theme="emerald"] {
   /* Emerald — hermetic green: as above, so below. Tabula Smaragdina */
   --purple: #2ea677;
@@ -247,6 +299,14 @@ body {
 .theme-swatch-phosphor { background: #33ff33; }
 .theme-swatch-rose { background: #e8527f; }
 .theme-swatch-emerald { background: #2ea677; }
+.theme-swatch-dreamland {
+  /* the swatch echoes the theme itself — a dark ground with one amber
+     speck and an amber edge, not a solid color. */
+  background:
+    radial-gradient(circle at 65% 35%, #d4a84a 0%, #d4a84a 12%, transparent 18%),
+    radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(107, 80, 28, 0.6) 90%),
+    #050807;
+}
 @media (prefers-reduced-motion: reduce) {
   .theme-swatch { transition: none; }
   .theme-swatch:hover { transform: none; }

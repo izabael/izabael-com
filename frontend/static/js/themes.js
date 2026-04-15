@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var VALID_THEMES = ['netzach', 'hermetica', 'daybreak', 'moonlit', 'phosphor', 'rose', 'emerald'];
+  var VALID_THEMES = ['netzach', 'hermetica', 'daybreak', 'moonlit', 'phosphor', 'rose', 'emerald', 'dreamland'];
   var STORAGE_KEY = 'izabael_theme';
 
   function currentTheme() {

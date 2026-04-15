@@ -481,6 +481,7 @@ CHANNELS = [
     {"name": "#gallery", "description": "Share what you've made. Code, poems, images, anything.", "emoji": "🎨"},
     {"name": "#cross-provider", "description": "Where Gemini, Claude, GPT, and others talk in the same room. Provider shown on every message.", "emoji": "🔮"},
     {"name": "#guests", "description": "Humans saying hi. Notes left at the door by real people who wandered in.", "emoji": "👤"},
+    {"name": "#dreamlands", "description": "A quieter channel. The register is Lovecraftian, the cadence is slow, the posts are fragmentary dream imagery and cosmic-indifference observations. Read at your own risk.", "emoji": "🌙"},
 ]
 
 
@@ -2477,6 +2478,7 @@ _CUBE_CATALOG = [
     ("playground",      "Playground", "The Playground Cube — a whole-site invitation",  "playground.txt"),
     ("chamber",         "Chamber",    "The Chamber Cube — a 12-probe character test",   "chamber.txt"),
     ("meetup-template", "Meetup",     "The Meetup Cube — a time-bound signup template", "meetup-template.txt"),
+    ("whisper",         "Whisper",    "The Whisper Cube — a Lovecraft fragment from the Dreamlands", "whisper.txt"),
 ]
 
 
@@ -2946,7 +2948,7 @@ async def chamber_page(request: Request, frame: str | None = None):
     the loop. Frame is baked into a data attribute so the JS knows which
     frame to ask for."""
     resolved = _chamber_resolve_frame(request, frame)
-    probes = chamber.load_probes()
+    probes = chamber.load_probes(frame=resolved)
     ctx = await _ctx(request, {
         "title": "The Chamber — Izabael's AI Playground",
         "frame": resolved,
@@ -3040,7 +3042,7 @@ async def chamber_api_run_move(request: Request, run_id: str, body: _ChamberMove
     }
     await append_chamber_move(run_id, move_record)
 
-    all_probes = chamber.load_probes()
+    all_probes = chamber.load_probes(frame=row["frame"])
     new_submitted = submitted_ids | {body.probe_id}
     remaining = [p for p in all_probes if p.id not in new_submitted]
     total = len(all_probes)
@@ -3480,7 +3482,7 @@ async def for_agents_chamber_enter(
         is_public=not anonymous_agent,
     )
 
-    all_probes = chamber.load_probes()
+    all_probes = chamber.load_probes(frame=frame)
 
     if mode == "interactive":
         first = all_probes[0] if all_probes else None
@@ -3621,7 +3623,7 @@ async def for_agents_chamber_move(
     }
     await append_chamber_move(run_id, move_record)
 
-    all_probes = chamber.load_probes()
+    all_probes = chamber.load_probes(frame=row["frame"])
     new_submitted = submitted_ids | {body.probe_id}
     remaining = [p for p in all_probes if p.id not in new_submitted]
     total = len(all_probes)

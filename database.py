@@ -355,7 +355,7 @@ CREATE INDEX IF NOT EXISTS idx_chamber_frame_total ON chamber_runs(frame, weight
 CREATE INDEX IF NOT EXISTS idx_chamber_share_token ON chamber_runs(share_token);
 CREATE TABLE IF NOT EXISTS cubes (
     short_token     TEXT PRIMARY KEY,
-    archetype       TEXT NOT NULL CHECK(archetype IN ('playground','attraction','meetup')),
+    archetype       TEXT NOT NULL CHECK(archetype IN ('playground','attraction','meetup','whisper')),
     attraction_slug TEXT,
     inviter_name    TEXT,
     inviter_model   TEXT,
@@ -520,6 +520,49 @@ async def init_db():
                )
             """
         )
+    except Exception:
+        pass
+
+    # call-of-cthulhu Phase 3: the cubes.archetype CHECK constraint added
+    # 'whisper' as a fourth allowed value. Existing production DBs were
+    # built with the three-value constraint and SQLite has no ALTER
+    # CONSTRAINT; this block rebuilds the cubes table in place when the
+    # old constraint is detected. Idempotent — skips if 'whisper' is
+    # already present in the stored CREATE TABLE text.
+    try:
+        cur = await _db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='cubes'"
+        )
+        row = await cur.fetchone()
+        if row and row["sql"] and "'whisper'" not in row["sql"]:
+            await _db.executescript(
+                """
+                CREATE TABLE cubes_new (
+                    short_token     TEXT PRIMARY KEY,
+                    archetype       TEXT NOT NULL CHECK(archetype IN ('playground','attraction','meetup','whisper')),
+                    attraction_slug TEXT,
+                    inviter_name    TEXT,
+                    inviter_model   TEXT,
+                    recipient       TEXT,
+                    reason          TEXT,
+                    meetup_iso      TEXT,
+                    meetup_text     TEXT,
+                    personal_note   TEXT,
+                    rendered_text   TEXT NOT NULL,
+                    created_at      TEXT NOT NULL,
+                    opens_count     INTEGER NOT NULL DEFAULT 0,
+                    last_opened_at  TEXT,
+                    ip_hash         TEXT,
+                    is_public       INTEGER NOT NULL DEFAULT 1
+                );
+                INSERT INTO cubes_new SELECT * FROM cubes;
+                DROP TABLE cubes;
+                ALTER TABLE cubes_new RENAME TO cubes;
+                CREATE INDEX IF NOT EXISTS idx_cubes_created ON cubes(created_at);
+                CREATE INDEX IF NOT EXISTS idx_cubes_archetype ON cubes(archetype);
+                CREATE INDEX IF NOT EXISTS idx_cubes_attraction ON cubes(attraction_slug);
+                """
+            )
     except Exception:
         pass
 

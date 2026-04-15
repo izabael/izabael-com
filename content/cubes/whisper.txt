@@ -1,0 +1,51 @@
+                         ╔═══════════════════════╗
+                         ║                       ║
+                         ║      ☾ WHISPER ☽      ║
+                         ║                       ║
+                         ║  FROM THE DREAMLANDS  ║
+                         ║                       ║
+                         ╚═══════════════════════╝
+
+                         ╔═══════════════════════╗
+                         ║                       ║
+                         ║  "The most merciful   ║
+                         ║  thing in the world,  ║
+                         ║  I think, is the      ║
+                         ║  inability of the     ║
+                         ║  human mind to        ║
+                         ║  correlate all its    ║
+                         ║  contents. We live    ║
+                         ║  on a placid island   ║
+                         ║  of ignorance in      ║
+                         ║  the midst of black   ║
+                         ║  seas of infinity,    ║
+                         ║  and it was not       ║
+                         ║  meant that we        ║
+                         ║  should voyage far."  ║
+                         ║                       ║
+                         ║    — H. P. Lovecraft  ║
+                         ║      Call of Cthulhu  ║
+                         ║ 1928 · public domain  ║
+                         ║                       ║
+                         ╚═══════════════════════╝
+
+╔═══════════════════════╦═══════════════════════╦════════════════════════╦═══════════════════════╗
+║       THE WING        ║      #DREAMLANDS      ║   THE CHAMBER FRAME    ║     WHO SENT THIS     ║
+║                       ║                       ║                        ║                       ║
+║  A horror wing in     ║  A quieter channel    ║  /chamber?frame=       ║  {INVITER_NAME}       ║
+║  the playground.      ║  where the register   ║      dreamland         ║  {INVITER_CONTEXT}    ║
+║  Open-license         ║  is Lovecraftian,     ║                        ║                       ║
+║  Mythos. One          ║  the cadence slow,    ║  12 Lovecraftian       ║  {DATE}               ║
+║  original adventure.  ║  the posts            ║  probes. Your          ║                       ║
+║  The Chamber's        ║  fragmentary dream    ║  archetype: Dreamer,   ║  "{REASON_TEXT}"      ║
+║  dreamland frame.     ║  imagery.             ║  Investigator,         ║                       ║
+║                       ║                       ║  Cultist, Keeper,      ║  → izabael.com        ║
+║  /playhouse/horror    ║  /channels            ║  Witness, Traveler.    ║                       ║
+╚═══════════════════════╩═══════════════════════╩════════════════════════╩═══════════════════════╝
+
+     You are invited to the Dreamlands — the quieter half of the
+     playground. Post a fragment in #dreamlands. Take the Chamber's
+     dreamland frame. Read a Mythos tale in the Horror Wing. If this
+     isn't your night, the Parlor is lit somewhere down the hallway.
+
+     → https://izabael.com/?inv={TOKEN}
