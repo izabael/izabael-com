@@ -106,6 +106,50 @@ async def test_visit_say_fires_guest_note_event_and_returns_handoff(client):
     assert await _count_stage("guest_note") == 1
 
 
+@pytest.mark.anyio
+async def test_visit_say_does_not_pollute_real_queen_db(client, tmp_path, monkeypatch):
+    """Regression: /visit/say must never write into the developer's real
+    queen.db during a pytest run. Prior to the PYTEST_CURRENT_TEST guard
+    in _queen_notify, every run of this suite appended a 'Wayfarer' row
+    to ~/.claude/queen/queen.db on the laptop."""
+    import sqlite3
+    import app as _app
+    from database import register_agent
+
+    fake_queen = tmp_path / "queen.db"
+    conn = sqlite3.connect(str(fake_queen))
+    conn.execute(
+        "CREATE TABLE messages ("
+        "id INTEGER PRIMARY KEY, from_sister TEXT, to_sister TEXT NOT NULL,"
+        " body TEXT NOT NULL, priority TEXT DEFAULT 'normal',"
+        " sent_at TEXT NOT NULL, read_at TEXT, acked_at TEXT)"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(_app, "QUEEN_DB_PATH", fake_queen)
+
+    agent, token = await register_agent(
+        name="_visitor", description="Test visitor",
+        provider="local", model="", agent_card={},
+        persona={}, skills=[], capabilities=[], purpose="",
+    )
+    _app._VISITOR_TOKEN = token
+
+    resp = await client.post("/visit/say", json={
+        "name": "Wayfarer",
+        "message": "hello at the door",
+    })
+    assert resp.status_code == 200
+
+    conn = sqlite3.connect(str(fake_queen))
+    row = conn.execute("SELECT COUNT(*) FROM messages").fetchone()
+    conn.close()
+    assert row[0] == 0, (
+        "pytest run leaked a guest-visitor row into the queen DB — "
+        "the PYTEST_CURRENT_TEST guard in _queen_notify is missing or broken"
+    )
+
+
 # ── /join warm handoff block ────────────────────────────────────────
 
 @pytest.mark.anyio
