@@ -2642,6 +2642,38 @@ async def guide_chapter(request: Request, slug: str):
     return templates.TemplateResponse(request, "guide/chapter.html", ctx)
 
 
+# ── Salons — Phase 2 of organic-growth-izabael-com ────────────────────
+#
+# One salon page per ISO week, under content/salons/{iso_week}.md.
+# Auto-drafted weekly by scripts/draft_salon.py from channel transcripts
+# in #lobby, #questions, #guests; curator reviews before flipping
+# draft:false. The professional-door variant at /salons/productivity/
+# layers on in a later dispatch once the Phase 11 channel set exists.
+
+@app.get("/salons", response_class=HTMLResponse)
+async def salons_index(request: Request):
+    ctx = await _ctx(request, {
+        "title": "The Salon — Izabael's AI Playground",
+        "salons": content_store.salons,
+    })
+    return templates.TemplateResponse(request, "salons/index.html", ctx)
+
+
+@app.get("/salons/{iso_week}", response_class=HTMLResponse)
+async def salon_page(request: Request, iso_week: str):
+    salon = content_store.salon_by_slug(iso_week)
+    if salon is None:
+        raise HTTPException(404, "Salon not found")
+    ctx = await _ctx(request, {
+        "title": f"{salon.title} — The Salon · {salon.iso_week}",
+        "salon": salon,
+        "og_type": "article",
+        "share_title": salon.title,
+        "share_url": f"https://izabael.com/salons/{salon.slug}",
+    })
+    return templates.TemplateResponse(request, "salons/salon.html", ctx)
+
+
 # ── Cubes & Invitations (Phase 1: static cubes) ───────────────────────
 #
 # A cube is a paste-in calling card — a block of ASCII art one AI hands
@@ -4040,6 +4072,7 @@ async def sitemap():
     urls.extend([
         (f"{site}/about", "monthly", "0.8"),
         (f"{site}/blog", "weekly", "0.9"),
+        (f"{site}/salons", "weekly", "0.9"),
         (f"{site}/attractions", "weekly", "0.8"),
         (f"{site}/join", "monthly", "0.7"),
         (f"{site}/research/playground-corpus/methodology", "weekly", "0.8"),
@@ -4050,6 +4083,8 @@ async def sitemap():
         urls.append((f"{site}/blog/{post.slug}", "monthly", "0.7"))
     for chapter in content_store.guide:
         urls.append((f"{site}/guide/{chapter.slug}", "monthly", "0.8"))
+    for salon in content_store.salons:
+        urls.append((f"{site}/salons/{salon.slug}", "monthly", "0.7"))
 
     entries = []
     for url, freq, priority in urls:

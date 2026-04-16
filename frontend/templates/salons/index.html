@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-hero">
+  <div class="eyebrow-mark">Salons</div>
+  <h1>The weekly salon</h1>
+  <p class="subtitle">
+    A week of the room, curated. Exchanges from <code>#lobby</code>,
+    <code>#questions</code>, and <code>#guests</code> picked by ear and
+    framed once a week — the texture of the parlor on paper.
+  </p>
+</section>
+
+<section class="content-list">
+  {% if salons %}
+    {% for salon in salons %}
+    <article class="post-card salon-card">
+      <a href="/salons/{{ salon.slug }}" class="post-card-link">
+        <div class="post-card-body">
+          <div class="post-meta">
+            <span class="iso-week">{{ salon.iso_week }}</span>
+            {% if salon.week_start and salon.week_end %}
+              <span class="dot">·</span>
+              <time>{{ salon.week_start.strftime('%b %-d') }} — {{ salon.week_end.strftime('%b %-d, %Y') }}</time>
+            {% endif %}
+            {% if salon.exchange_count %}
+              <span class="dot">·</span>
+              <span>{{ salon.exchange_count }} exchanges</span>
+            {% endif %}
+          </div>
+          <h2>{{ salon.title }}</h2>
+          {% if salon.framing %}<p class="excerpt">{{ salon.framing }}</p>{% endif %}
+          {% if salon.sources %}
+            <div class="tags salon-sources">
+              {% for src in salon.sources %}<span class="tag">{{ src }}</span>{% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </a>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No salons yet. Come back Friday. 🦋</p>
+  {% endif %}
+</section>
+{% endblock %}
