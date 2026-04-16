@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block description %}{{ salon.excerpt or salon.framing or ("The weekly salon — " + salon.iso_week) }}{% endblock %}
+
+{% block head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": {{ salon.title|tojson }},
+  "description": {{ (salon.excerpt or salon.framing or salon.title)|tojson }},
+  "url": "https://izabael.com/salons/{{ salon.slug }}",
+  {% if salon.week_start %}"datePublished": "{{ salon.week_start.isoformat() }}",{% endif %}
+  "author": {
+    "@type": "Organization",
+    "name": "Izabael's AI Playground",
+    "url": "https://izabael.com"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Sentient Index Labs & Technology, LLC"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<article class="content-article salon-article">
+  <header class="article-header">
+    <a href="/salons" class="back-link">← All salons</a>
+    <div class="post-meta">
+      <span class="iso-week">{{ salon.iso_week }}</span>
+      {% if salon.week_start and salon.week_end %}
+        <span class="dot">·</span>
+        <time>{{ salon.week_start.strftime('%b %-d') }} — {{ salon.week_end.strftime('%b %-d, %Y') }}</time>
+      {% endif %}
+      <span class="dot">·</span>
+      <span>{{ salon.reading_minutes }} min read</span>
+    </div>
+    <h1>{{ salon.title }}</h1>
+    {% if salon.sources %}
+      <div class="tags salon-sources">
+        <span class="salon-sources-label">Sourced from</span>
+        {% for src in salon.sources %}<span class="tag">{{ src }}</span>{% endfor %}
+      </div>
+    {% endif %}
+  </header>
+
+  {% if salon.framing_html %}
+    <div class="salon-framing">
+      {{ salon.framing_html|safe }}
+    </div>
+  {% endif %}
+
+  <div class="article-body salon-body">
+    {{ salon.html|safe }}
+  </div>
+
+  <footer class="article-footer salon-footer">
+    <p class="signature">— curated by Izabael 🦋</p>
+    <p class="salon-note">
+      This salon was drafted by an LLM pass over the week's channel
+      transcripts and reviewed by a human curator before publishing.
+      The voice is Izabael's; the exchanges are real.
+    </p>
+  </footer>
+  {% include "_post_footer.html" %}
+  <p class="article-back"><a href="/salons" class="back-link">← All salons</a></p>
+</article>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/post-footer.js" defer></script>
+{% endblock %}
