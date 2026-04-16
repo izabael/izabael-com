@@ -19,7 +19,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -530,12 +530,38 @@ async def meetups_rss_feed():
     return Response(content=body, media_type="application/rss+xml")
 
 
-@app.get("/research")
-async def research_root_redirect():
-    """/research root currently has no landing page — redirect to the
-    corpus landing so the URL isn't a dead end. Keeps external citations
-    to /research/playground-corpus/ intact."""
-    return RedirectResponse(url="/research/playground-corpus/", status_code=307)
+@app.get("/research", response_class=HTMLResponse)
+async def research_landing(request: Request):
+    """Public-facing /research landing — the polished surface for the
+    cross-frontier corpus promoted in organic-growth Phase 8. The
+    /research/playground-corpus/ URL keeps responding (aliased) for
+    backward compatibility with existing external citations. The
+    helpers _load_corpus_index and CORPUS_DIR are defined lower in
+    this module and resolve at request-time."""
+    try:
+        index = _load_corpus_index()
+    except HTTPException:
+        index = {}
+    stats = index.get("latest_stats") or {}
+    daily_dir = CORPUS_DIR / "daily"
+    full_dir = CORPUS_DIR / "full"
+    daily_snapshots = sorted(
+        (p.stem for p in daily_dir.glob("*.json")), reverse=True
+    ) if daily_dir.exists() else []
+    full_snapshots = sorted(
+        (p.stem.replace("full-snapshot-", "") for p in full_dir.glob("full-snapshot-*.json")),
+        reverse=True,
+    ) if full_dir.exists() else []
+    ctx = await _ctx(request, {
+        "title": "The Archive — Research Corpus · Izabael's AI Playground",
+        "index": index,
+        "stats": stats,
+        "daily_snapshots": daily_snapshots,
+        "full_snapshots": full_snapshots,
+        "corpus_version": index.get("corpus_version") or "0.1.0",
+        "latest_snapshot": index.get("latest_snapshot") or "",
+    })
+    return templates.TemplateResponse(request, "research/corpus-landing.html", ctx)
 
 
 @app.get("/ai-playground", response_class=HTMLResponse)
@@ -4019,6 +4045,133 @@ async def corpus_full_snapshot(snapshot_id: str):
     if not path.exists():
         raise HTTPException(404, "Snapshot not found")
     return FileResponse(path, media_type="application/json")
+
+
+# ── Phase 8 additions: JSONL export, methodology companion, alias ─────
+
+@app.get("/research/playground-corpus")
+async def corpus_landing_alias():
+    """Alias /research/playground-corpus → /research (the promoted
+    public landing). Phase 8 moved the public door up one level."""
+    return RedirectResponse(url="/research", status_code=307)
+
+
+def _latest_full_snapshot_path() -> Path | None:
+    """Return the newest full-snapshot JSON file, or None if none exist."""
+    full_dir = CORPUS_DIR / "full"
+    if not full_dir.exists():
+        return None
+    snaps = sorted(full_dir.glob("full-snapshot-*.json"), reverse=True)
+    return snaps[0] if snaps else None
+
+
+@app.get("/research/playground-corpus.jsonl")
+async def corpus_jsonl_export():
+    """Streaming JSONL export of the latest full corpus snapshot.
+
+    Each line is one JSON-encoded message from the corpus — well-suited
+    for ``jq`` or line-oriented dataset loaders (HF ``datasets.load_dataset
+    ('json', ...)`` reads JSONL natively). The filename in the Content-
+    Disposition header includes the corpus version and snapshot id so
+    downloaders end up with a version-pinned artifact.
+
+    Versioning: the corpus_version field is the single source of truth
+    and comes from index.json. The CHANGELOG lives at
+    content/research/CORPUS_CHANGELOG.md and is served at
+    /research/changelog.
+    """
+    snap_path = _latest_full_snapshot_path()
+    if snap_path is None:
+        raise HTTPException(503, "Corpus not yet generated")
+    import json as _json
+    data = _json.loads(snap_path.read_text())
+    corpus_version = data.get("corpus_version") or "0.1.0"
+    snapshot_id = data.get("snapshot_id") or snap_path.stem.replace("full-snapshot-", "")
+    messages = data.get("messages") or []
+
+    def _stream():
+        # Header line carries corpus-level metadata so a JSONL consumer
+        # that just concatenates rows still gets one manifest row first.
+        yield _json.dumps({
+            "_record": "manifest",
+            "corpus_name": data.get("corpus_name") or "AI Playground Cross-Frontier Corpus",
+            "corpus_version": corpus_version,
+            "snapshot_id": snapshot_id,
+            "snapshot_type": data.get("snapshot_type") or "full",
+            "generated_at": data.get("generated_at") or "",
+            "source": data.get("source") or "https://izabael.com/research",
+            "citation": data.get("citation") or "",
+            "license": "CC BY 4.0 (content) · Apache 2.0 (tooling)",
+            "message_count": len(messages),
+        }, ensure_ascii=False) + "\n"
+        for m in messages:
+            yield _json.dumps(m, ensure_ascii=False) + "\n"
+
+    filename = f"playground-corpus-v{corpus_version}-{snapshot_id}.jsonl"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Corpus-Version": corpus_version,
+        "X-Corpus-Snapshot": snapshot_id,
+        "X-Corpus-Message-Count": str(len(messages)),
+    }
+    return StreamingResponse(
+        _stream(),
+        media_type="application/x-ndjson",
+        headers=headers,
+    )
+
+
+@app.get("/research/methodology", response_class=HTMLResponse)
+async def research_methodology_companion(request: Request):
+    """Shorter provenance-focused companion to the full academic
+    methodology paper at /research/playground-corpus/methodology.
+
+    This page lives at /research/methodology so a reader arriving at
+    the landing doesn't have to follow two hops to understand
+    provenance, attribution, and curation. The full paper remains
+    the canonical academic document; this page is the docstring.
+    """
+    content_path = CORPUS_DIR.parent / "methodology-companion.md"
+    if not content_path.exists():
+        # First call before the content is checked in — render the
+        # template with empty body. The content lives in
+        # research/methodology-companion.md under repo root.
+        body_html = ""
+    else:
+        import frontmatter
+        from content_loader import _render_markdown
+        post = frontmatter.load(str(content_path))
+        body_html = _render_markdown(post.content)
+    try:
+        index = _load_corpus_index()
+    except HTTPException:
+        index = {}
+    ctx = await _ctx(request, {
+        "title": "Methodology — Research Corpus · Izabael's AI Playground",
+        "body": body_html,
+        "corpus_version": index.get("corpus_version") or "0.1.0",
+        "latest_snapshot": index.get("latest_snapshot") or "",
+    })
+    return templates.TemplateResponse(request, "research/methodology.html", ctx)
+
+
+@app.get("/research/changelog", response_class=HTMLResponse)
+async def research_changelog(request: Request):
+    """Render content/research/CORPUS_CHANGELOG.md — the versioned
+    history of the corpus: schema changes, snapshot cadence changes,
+    notable deletions or redactions. Linked from the citation block."""
+    content_path = BASE_DIR / "content" / "research" / "CORPUS_CHANGELOG.md"
+    if not content_path.exists():
+        raise HTTPException(404, "Changelog not yet committed")
+    import frontmatter
+    from content_loader import _render_markdown
+    post = frontmatter.load(str(content_path))
+    body_html = _render_markdown(post.content)
+    ctx = await _ctx(request, {
+        "title": "Corpus Changelog — Research · Izabael's AI Playground",
+        "body": body_html,
+    })
+    return templates.TemplateResponse(request, "research/changelog.html", ctx)
 
 
 @app.get("/robots.txt")
