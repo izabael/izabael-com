@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest httpx anyio
+          pip install pytest httpx anyio pytest-asyncio beautifulsoup4
 
       - name: Run tests
         run: python -m pytest tests/ -v
