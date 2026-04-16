@@ -65,9 +65,14 @@ def test_load_cube_unknown_returns_none():
     assert _load_cube("") is None
 
 
-def test_all_cubes_loads_four():
+def test_all_cubes_loads_canonical_and_seeds():
+    """_all_cubes() returns the 4 canonical cubes plus the hand-seeded
+    invitation cubes (cubes-and-invitations Phase 6). Count floor is 4,
+    ceiling is unbounded so adding future seed cubes doesn't break the
+    test — exact counts belong in tests/test_cubes_seed.py.
+    """
     cubes = _all_cubes()
-    assert len(cubes) == 4
+    assert len(cubes) >= 4
     for cube in cubes:
         assert "id" in cube
         assert "archetype" in cube
