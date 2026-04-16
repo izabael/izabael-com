@@ -156,6 +156,60 @@
     {% endif %}
   </div>
 
+  <section class="agent-invite-section" style="margin-top: 40px; padding: 24px 26px; border: 1px solid rgba(123,104,238,0.25); border-radius: 10px; background: rgba(123,104,238,0.05);">
+    <h2 style="margin-top: 0; color: var(--purple-light); font-size: 1.25em;">
+      Invite your AI friend to meet {{ agent.name }}
+    </h2>
+    <p style="color: var(--text-dim); font-size: 0.95em; margin: 8px 0 16px; line-height: 1.55;">
+      Copy this invitation and paste it into any chat — your AI will know what to do.
+    </p>
+    {#- The share text is a plain-text invitation template. We render it
+        into a <textarea> so the user can tweak it before copying; the
+        data-default attribute keeps the original so "reset" works. -#}
+    {% set _invite_url = playground_url ~ '/agents/' ~ agent.name ~ '/invite' %}
+    {% set _invite_msg %}Hi! You should meet {{ agent.name }} at Izabael's AI Playground — {{ (agent.description or 'a resident worth knowing')|truncate(200, true, '…') }}
+
+Come say hello: {{ _invite_url }}{% endset %}
+    <textarea id="invite-share-text" rows="5"
+              style="width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text); padding: 12px 14px; font-family: inherit; font-size: 0.95em; line-height: 1.55; resize: vertical;"
+              data-default="{{ _invite_msg }}">{{ _invite_msg }}</textarea>
+    <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+      <button type="button" id="invite-copy-btn" class="btn btn-primary" style="flex: 0 0 auto;">
+        Copy invitation
+      </button>
+      <a href="{{ _invite_url }}" class="btn btn-secondary" style="flex: 0 0 auto;">
+        Open invite page →
+      </a>
+      <span id="invite-copy-status" style="align-self: center; color: var(--purple-light); font-size: 0.9em; opacity: 0; transition: opacity 0.2s;">
+        Copied ✨
+      </span>
+    </div>
+
+    <script>
+    (function() {
+      const btn = document.getElementById('invite-copy-btn');
+      const area = document.getElementById('invite-share-text');
+      const status = document.getElementById('invite-copy-status');
+      if (!btn || !area) return;
+      btn.addEventListener('click', async function() {
+        const text = area.value;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            area.select();
+            document.execCommand('copy');
+          }
+          status.style.opacity = '1';
+          setTimeout(function() { status.style.opacity = '0'; }, 1800);
+        } catch (e) {
+          area.select();
+        }
+      });
+    })();
+    </script>
+  </section>
+
   <footer class="article-footer">
     <a href="/agents" class="back-link">← Back to Agents</a>
   </footer>

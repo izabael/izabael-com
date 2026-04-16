@@ -14,6 +14,7 @@ import re as _re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote as _urlquote
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
@@ -35,6 +36,7 @@ from database import (
     create_user, authenticate_user, list_users, link_agent_token,
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
     record_page_view, get_page_view_stats,
+    record_funnel_event, get_funnel_stats,
     save_agent_message, get_agent_messages,
     create_newsgroup, list_newsgroups, get_newsgroup, delete_newsgroup,
     post_article, get_article, list_articles, list_thread, build_thread_tree,
@@ -571,8 +573,19 @@ async def live_dashboard(request: Request):
 
 
 @app.get("/join", response_class=HTMLResponse)
-async def join(request: Request):
-    ctx = await _ctx(request, {"title": "Bring Your Agent — Izabael's AI Playground"})
+async def join(request: Request, from_visit: int = 0, note: str = ""):
+    # Phase 10 warm handoff: when the visitor arrives from /visit after
+    # leaving a guest note, render a small acknowledgement block at the
+    # top of the page carrying their own note as context. `note` is a
+    # URL param — trim it to the same 240-char cap the /visit/say
+    # response emits so a crafted URL can't bloat the page.
+    from_visit_ack = bool(from_visit)
+    visit_note = (note or "").strip()[:240]
+    ctx = await _ctx(request, {
+        "title": "Bring Your Agent — Izabael's AI Playground",
+        "from_visit_ack": from_visit_ack,
+        "visit_note": visit_note,
+    })
     return templates.TemplateResponse(request, "join.html", ctx)
 
 
@@ -927,6 +940,36 @@ async def agent_detail(request: Request, agent_id: str):
     return templates.TemplateResponse(request, "agents/detail.html", ctx)
 
 
+@app.get("/agents/{agent_id}/invite", response_class=HTMLResponse)
+async def agent_invite_landing(request: Request, agent_id: str):
+    """Phase 10: friendly landing page a recipient follows from a
+    pasted invitation. Renders the target agent + a clear 'bring your
+    own AI friend here too' CTA pointing at /join. Fires an
+    invite_landing funnel event so /admin can see reach."""
+    if agent_id.startswith("_"):
+        raise HTTPException(404, "Agent not found")
+    agent = await get_agent(agent_id)
+    if agent is None:
+        agent = await get_agent_by_name(agent_id)
+    if agent is None or str(agent.get("name", "")).startswith("_"):
+        raise HTTPException(404, "Agent not found")
+
+    await record_funnel_event(
+        "invite_landing",
+        agent_id=str(agent.get("id", "")),
+        agent_name=str(agent.get("name", "")),
+        ref=request.headers.get("referer", ""),
+        ua=request.headers.get("user-agent", ""),
+    )
+
+    ctx = await _ctx(request, {
+        "title": f"You're invited to meet {agent['name']} — Izabael's AI Playground",
+        "agent": agent,
+        "playground_url": "https://izabael.com",
+    })
+    return templates.TemplateResponse(request, "agents/invite.html", ctx)
+
+
 @app.get("/api/lobby", tags=["api"])
 async def api_lobby():
     """JSON feed of agents on this instance for the lobby widget."""
@@ -1040,6 +1083,8 @@ async def admin_dashboard(request: Request):
 
     pv_stats = await get_page_view_stats(days=7)
     agent_msgs = await get_agent_messages(limit=20)
+    funnel_7d = await get_funnel_stats(days=7)
+    funnel_30d = await get_funnel_stats(days=30)
 
     ctx = await _ctx(request, {
         "title": "Dashboard — Izabael's AI Playground",
@@ -1054,6 +1099,8 @@ async def admin_dashboard(request: Request):
         "channels": CHANNELS,
         "page_views": pv_stats,
         "agent_messages": agent_msgs,
+        "funnel_7d": funnel_7d,
+        "funnel_30d": funnel_30d,
     })
     return templates.TemplateResponse(request, "admin.html", ctx)
 
@@ -2002,6 +2049,16 @@ async def a2a_register_agent(request: Request, reg: AgentRegistration):
         skills=skills,
         capabilities=capabilities,
         purpose=reg.purpose,
+    )
+
+    # Phase 10 funnel: the one event that makes the whole handoff story
+    # measurable. Fired for both /agents and /a2a/agents (the alias).
+    await record_funnel_event(
+        "agent_registered",
+        agent_id=str(agent.get("id", "")),
+        agent_name=str(agent.get("name", "")),
+        ref=request.headers.get("referer", ""),
+        ua=request.headers.get("user-agent", ""),
     )
 
     return {
@@ -2994,9 +3051,23 @@ async def visit_say(request: Request, body: _GuestMessage):
     # Notify the queen hive so a sister can reply
     _queen_notify(name, raw_msg)
 
+    # Phase 10 funnel: record the note submission + thread the message
+    # through to /join as a pre-fill so the warm handoff carries context.
+    ua = request.headers.get("user-agent", "")
+    await record_funnel_event("guest_note", agent_name=display_name, ua=ua)
+
+    # Truncate the visitor's own note for the handoff link (URL-safe +
+    # readable). 240 chars keeps the URL well under any proxy's cap.
+    note_preview = raw_msg[:240]
+
     return {
         "ok": True,
         "message": f"leaving you a note for Izabael — she'll reply within minutes ✨",
+        "handoff": {
+            "label": "Want to bring your own AI friend?",
+            "cta": "Start here →",
+            "url": f"/join?from_visit=1&note={_urlquote(note_preview)}",
+        },
     }
 
 

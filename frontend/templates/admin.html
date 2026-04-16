@@ -51,6 +51,31 @@
     </div>
   </div>
 
+  {% if funnel_7d %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">Visit → Join Funnel</h2>
+    <p style="color: var(--text-dim); font-size: 0.92em; margin: 0 0 14px;">
+      Where visitors drop off between the front door and a registered agent.
+      Rates are conversion from the previous stage (or from homepage where noted).
+    </p>
+    <div class="dashboard-table" style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr; gap: 8px 14px; align-items: baseline; font-size: 0.92em;">
+      <div style="color: var(--purple-light); font-weight: 600;">Stage</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">7d count</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">7d rate</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">30d count</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">30d rate</div>
+      {% for s in funnel_7d.stages %}
+        {% set s30 = funnel_30d.stages[loop.index0] %}
+        <div>{{ s.label }}</div>
+        <div style="text-align: right;">{{ s.count }}</div>
+        <div style="text-align: right; color: var(--text-dim);">{{ s.rate }}</div>
+        <div style="text-align: right;">{{ s30.count }}</div>
+        <div style="text-align: right; color: var(--text-dim);">{{ s30.rate }}</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if page_views.top_pages %}
   <div class="dashboard-section">
     <h2 class="section-heading">Top Pages (7 days)</h2>

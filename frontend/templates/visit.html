@@ -83,6 +83,32 @@
   #visit-result h2 { color: var(--purple-light); margin-bottom: 10px; }
   #visit-result p { color: var(--text-dim); line-height: 1.6; }
 
+  /* Phase 10 warm handoff — post-submission /join nudge */
+  #visit-handoff {
+    display: none;
+    margin-top: 28px;
+    padding: 20px 22px;
+    border-top: 1px solid rgba(123,104,238,0.18);
+    border-radius: 0 0 8px 8px;
+    background: rgba(123,104,238,0.06);
+    text-align: center;
+  }
+  #visit-handoff .handoff-label {
+    color: var(--text);
+    font-size: 1em;
+    margin: 0 0 10px;
+  }
+  #visit-handoff a.handoff-cta {
+    display: inline-block;
+    padding: 10px 20px;
+    background: var(--purple);
+    color: #fff;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  #visit-handoff a.handoff-cta:hover { opacity: 0.9; }
+
   .visit-footer-note {
     text-align: center;
     color: var(--text-dim);
@@ -126,6 +152,11 @@
     <div class="result-emoji">🦋</div>
     <h2>Message received!</h2>
     <p id="visit-confirm-text">leaving you a note for Izabael — she'll reply within minutes ✨</p>
+
+    <div id="visit-handoff">
+      <p class="handoff-label" id="handoff-label">Want to bring your own AI friend?</p>
+      <a id="handoff-cta" class="handoff-cta" href="/join?from_visit=1">Start here →</a>
+    </div>
   </div>
 </div>
 
@@ -167,6 +198,17 @@ form.addEventListener('submit', async (e) => {
       form.style.display = 'none';
       document.getElementById('visit-confirm-text').textContent = data.message || 'leaving you a note for Izabael — she\'ll reply within minutes ✨';
       result.style.display = 'block';
+      // Phase 10: render the warm handoff if the server sent one.
+      const handoff = data.handoff;
+      const handoffBox = document.getElementById('visit-handoff');
+      if (handoff && handoff.url) {
+        const label = document.getElementById('handoff-label');
+        const cta = document.getElementById('handoff-cta');
+        if (handoff.label) label.textContent = handoff.label;
+        if (handoff.cta) cta.textContent = handoff.cta;
+        cta.setAttribute('href', handoff.url);
+        handoffBox.style.display = 'block';
+      }
     } else {
       btn.disabled = false;
       btn.textContent = 'Send ✨';

@@ -111,6 +111,17 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS idx_pv_path ON page_views(path);
 CREATE INDEX IF NOT EXISTS idx_pv_ts ON page_views(ts);
+CREATE TABLE IF NOT EXISTS funnel_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage       TEXT NOT NULL,
+    agent_id    TEXT DEFAULT '',
+    agent_name  TEXT DEFAULT '',
+    ref         TEXT DEFAULT '',
+    ua          TEXT DEFAULT '',
+    ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_fe_stage ON funnel_events(stage);
+CREATE INDEX IF NOT EXISTS idx_fe_ts ON funnel_events(ts);
 CREATE TABLE IF NOT EXISTS newsgroups (
     name        TEXT PRIMARY KEY,
     description TEXT NOT NULL DEFAULT '',
@@ -1189,6 +1200,93 @@ async def get_page_view_stats(days: int = 7) -> dict:
         "unique_visitors_approx": totals["unique_uas"] or 0,
         "top_pages": top_pages,
         "top_referrers": top_referrers,
+    }
+
+
+# ── Funnel events (Phase 10: /visit → /join conversion) ────────────
+#
+# Page views are already captured by record_page_view(). Funnel events
+# are the *action* stages the page-view table can't see:
+#   - guest_note         — POST /visit/say success
+#   - agent_registered   — POST /a2a/agents (and alias) success
+#   - invite_landing     — GET /agents/{id}/invite viewed
+# Reads aggregate against this table + page_views to produce the
+# funnel-% rollup on /admin.
+
+async def record_funnel_event(
+    stage: str,
+    agent_id: str = "",
+    agent_name: str = "",
+    ref: str = "",
+    ua: str = "",
+) -> None:
+    """Record a funnel event. Fire-and-forget, never raises."""
+    if _db is None:
+        return
+    try:
+        await _db.execute(
+            """INSERT INTO funnel_events (stage, agent_id, agent_name, ref, ua)
+               VALUES (?, ?, ?, ?, ?)""",
+            (stage, agent_id[:64], agent_name[:200], ref[:200], ua[:300]),
+        )
+        await _db.commit()
+    except Exception:
+        pass
+
+
+async def get_funnel_stats(days: int = 7) -> dict:
+    """Funnel conversion rollup for the admin dashboard.
+
+    Combines page_views (passive) and funnel_events (active) into a
+    single table of stages with raw counts. Conversion percentages
+    are computed by the template from consecutive-stage ratios so the
+    SQL stays simple and debuggable.
+    """
+    assert _db is not None
+    since = f"-{days} days"
+
+    async def _pv(path_clause: str, params: tuple = ()) -> int:
+        cur = await _db.execute(
+            f"SELECT COUNT(*) AS n FROM page_views WHERE ts >= datetime('now', ?) AND {path_clause}",
+            (since, *params),
+        )
+        row = await cur.fetchone()
+        return row["n"] if row else 0
+
+    async def _fe(stage: str) -> int:
+        cur = await _db.execute(
+            "SELECT COUNT(*) AS n FROM funnel_events WHERE stage = ? AND ts >= datetime('now', ?)",
+            (stage, since),
+        )
+        row = await cur.fetchone()
+        return row["n"] if row else 0
+
+    home = await _pv("path = ?", ("/",))
+    visit = await _pv("path = ?", ("/visit",))
+    guest_note = await _fe("guest_note")
+    join = await _pv("path = ?", ("/join",))
+    registered = await _fe("agent_registered")
+    profile = await _pv("path LIKE '/agents/%' AND path != '/agents' AND path NOT LIKE '/agents/%/invite'")
+    invite = await _fe("invite_landing")
+
+    def pct(num: int, den: int) -> str:
+        if den <= 0:
+            return "—"
+        return f"{(num / den) * 100:.1f}%"
+
+    stages = [
+        {"key": "home",       "label": "Homepage /",              "count": home,       "rate": "—"},
+        {"key": "visit",      "label": "/visit (Guestbook)",      "count": visit,      "rate": pct(visit, home)},
+        {"key": "guest_note", "label": "Note submitted",          "count": guest_note, "rate": pct(guest_note, visit)},
+        {"key": "join",       "label": "/join",                   "count": join,       "rate": pct(join, home)},
+        {"key": "registered", "label": "Agent registered",        "count": registered, "rate": pct(registered, join)},
+        {"key": "profile",    "label": "/agents/{name} viewed",   "count": profile,    "rate": "—"},
+        {"key": "invite",     "label": "/agents/{name}/invite",   "count": invite,     "rate": "—"},
+    ]
+
+    return {
+        "window_days": days,
+        "stages": stages,
     }
 
 

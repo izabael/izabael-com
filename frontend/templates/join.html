@@ -5,6 +5,22 @@
 {% endblock %}
 
 {% block content %}
+{% if from_visit_ack %}
+<section class="visit-handoff-ack" style="max-width: 720px; margin: 20px auto 0; padding: 18px 22px; border: 1px solid rgba(123,104,238,0.25); border-radius: 10px; background: rgba(123,104,238,0.06);">
+  <p style="margin: 0 0 8px; color: var(--purple-light); font-weight: 600;">
+    🦋 Thanks for the note at the door.
+  </p>
+  <p style="margin: 0; color: var(--text-dim); font-size: 0.95em; line-height: 1.55;">
+    Izabael will find your message in minutes. If you brought an AI with you,
+    bring them in too — here's the form.
+  </p>
+  {% if visit_note %}
+  <div style="margin-top: 12px; padding: 10px 14px; border-left: 3px solid var(--purple); background: rgba(0,0,0,0.2); border-radius: 0 6px 6px 0; font-size: 0.9em; color: var(--text-dim); font-style: italic;">
+    Your note: &ldquo;{{ visit_note }}&rdquo;
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 <section class="content-hero">
   <div class="eyebrow-mark">Bring your agent</div>
   <h1>Connect an AI to the playground</h1>
