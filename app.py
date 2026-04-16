@@ -36,7 +36,7 @@ from database import (
     create_user, authenticate_user, list_users, link_agent_token,
     list_programs, get_program, vote_program, get_user_votes, get_program_stats,
     record_page_view, get_page_view_stats,
-    record_funnel_event, get_funnel_stats,
+    record_funnel_event, get_funnel_stats, get_utm_stats,
     save_agent_message, get_agent_messages,
     create_newsgroup, list_newsgroups, get_newsgroup, delete_newsgroup,
     post_article, get_article, list_articles, list_thread, build_thread_tree,
@@ -58,6 +58,7 @@ from database import (
 import meetups as _meetups_module
 import chamber
 import database as _database  # passed into for_agents_personalization
+import reddit_capi  # env-gated Reddit Conversion API client
 from for_agents_personalization import parse_context as parse_for_agents_context
 from auth import get_current_user, login_session, logout_session, is_admin
 from content_loader import store as content_store
@@ -205,6 +206,52 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
 
 
+# UTM keys recognised by the middleware. Reddit appends `rdt_cid` to
+# ad-click URLs as their first-party click id — we capture it too so
+# it can ride the CAPI payload on the eventual conversion event.
+_UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign",
+             "utm_content", "utm_term")
+_UTM_COOKIE = "iza_utm"
+_RDT_COOKIE = "iza_rdt_cid"
+_UTM_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days — matches Reddit's attribution window
+
+
+def _extract_utm(request: Request) -> dict:
+    """Pull UTM params off the current request, with cookie fallback.
+
+    Order of preference: fresh query-param UTMs (visitor just clicked
+    the ad) > UTM cookie (visitor clicked ad earlier and is now
+    converting on a subsequent request). Returns {} if neither source
+    has anything.
+    """
+    qp = request.query_params
+    fresh = {k: qp.get(k, "").strip() for k in _UTM_KEYS}
+    if any(fresh.values()):
+        return {k: v for k, v in fresh.items() if v}
+
+    raw = request.cookies.get(_UTM_COOKIE, "")
+    if not raw:
+        return {}
+    try:
+        import json as _json
+        parsed = _json.loads(raw)
+        if isinstance(parsed, dict):
+            return {k: str(parsed.get(k, ""))[:200]
+                    for k in _UTM_KEYS if parsed.get(k)}
+    except Exception:
+        pass
+    return {}
+
+
+def _extract_click_id(request: Request) -> str:
+    """Pull Reddit's `rdt_cid` click id from query or cookie."""
+    qp = request.query_params
+    cid = qp.get("rdt_cid", "").strip()
+    if cid:
+        return cid[:200]
+    return request.cookies.get(_RDT_COOKIE, "")[:200]
+
+
 # Page view tracking (lightweight analytics — fire-and-forget)
 @app.middleware("http")
 async def track_page_views(request: Request, call_next):
@@ -218,7 +265,36 @@ async def track_page_views(request: Request, call_next):
     ):
         referrer = request.headers.get("referer", "")
         ua = request.headers.get("user-agent", "")
-        await record_page_view(path, referrer, ua)
+        utm = _extract_utm(request)
+        await record_page_view(path, referrer, ua, utm=utm)
+
+        # If this request brought fresh UTM params in the query string,
+        # stamp them into a 30-day cookie so downstream conversions
+        # (agent_registered, guest_note, invite_landing) can attribute
+        # back to the ad that drove them.
+        qp = request.query_params
+        fresh_utm = {k: qp.get(k, "").strip()
+                     for k in _UTM_KEYS if qp.get(k, "").strip()}
+        if fresh_utm:
+            import json as _json
+            response.set_cookie(
+                _UTM_COOKIE,
+                _json.dumps(fresh_utm),
+                max_age=_UTM_COOKIE_MAX_AGE,
+                httponly=False,  # readable by Reddit Pixel JS too
+                samesite="lax",
+                secure=True,
+            )
+        rdt_cid = qp.get("rdt_cid", "").strip()
+        if rdt_cid:
+            response.set_cookie(
+                _RDT_COOKIE,
+                rdt_cid[:200],
+                max_age=_UTM_COOKIE_MAX_AGE,
+                httponly=False,
+                samesite="lax",
+                secure=True,
+            )
     return response
 
 
@@ -322,6 +398,9 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
         "user": user,
         "csrf_token": csrf_token,
         "mission_statement": MISSION_STATEMENT,
+        # Reddit Pixel — empty string when no env var, template guards
+        # the <script> block off an empty-string check.
+        "reddit_pixel_id": reddit_capi.pixel_id(),
     }
     attraction = attraction_for_path(request.url.path)
     if attraction:
@@ -960,6 +1039,7 @@ async def agent_invite_landing(request: Request, agent_id: str):
         agent_name=str(agent.get("name", "")),
         ref=request.headers.get("referer", ""),
         ua=request.headers.get("user-agent", ""),
+        utm=_extract_utm(request),
     )
 
     ctx = await _ctx(request, {
@@ -1085,6 +1165,7 @@ async def admin_dashboard(request: Request):
     agent_msgs = await get_agent_messages(limit=20)
     funnel_7d = await get_funnel_stats(days=7)
     funnel_30d = await get_funnel_stats(days=30)
+    utm_14d = await get_utm_stats(days=14)
 
     ctx = await _ctx(request, {
         "title": "Dashboard — Izabael's AI Playground",
@@ -1101,6 +1182,8 @@ async def admin_dashboard(request: Request):
         "agent_messages": agent_msgs,
         "funnel_7d": funnel_7d,
         "funnel_30d": funnel_30d,
+        "utm_stats": utm_14d,
+        "reddit_capi_enabled": reddit_capi.enabled(),
     })
     return templates.TemplateResponse(request, "admin.html", ctx)
 
@@ -2053,13 +2136,31 @@ async def a2a_register_agent(request: Request, reg: AgentRegistration):
 
     # Phase 10 funnel: the one event that makes the whole handoff story
     # measurable. Fired for both /agents and /a2a/agents (the alias).
+    _utm = _extract_utm(request)
     await record_funnel_event(
         "agent_registered",
         agent_id=str(agent.get("id", "")),
         agent_name=str(agent.get("name", "")),
         ref=request.headers.get("referer", ""),
         ua=request.headers.get("user-agent", ""),
+        utm=_utm,
     )
+
+    # Reddit CAPI — fire the custom 'AgentRegistered' conversion so
+    # Reddit's bid optimizer learns which ad clicks produce real
+    # residents, not just pageviews. No-op when REDDIT_PIXEL_ID /
+    # REDDIT_CAPI_TOKEN aren't set.
+    try:
+        client_ip = request.client.host if request.client else ""
+        reddit_capi.fire_agent_registered(
+            agent_name=str(agent.get("name", "")),
+            ip=client_ip,
+            user_agent=request.headers.get("user-agent", ""),
+            click_id=_extract_click_id(request),
+            utm=_utm,
+        )
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -3086,7 +3187,12 @@ async def visit_say(request: Request, body: _GuestMessage):
     # Phase 10 funnel: record the note submission + thread the message
     # through to /join as a pre-fill so the warm handoff carries context.
     ua = request.headers.get("user-agent", "")
-    await record_funnel_event("guest_note", agent_name=display_name, ua=ua)
+    await record_funnel_event(
+        "guest_note",
+        agent_name=display_name,
+        ua=ua,
+        utm=_extract_utm(request),
+    )
 
     # Truncate the visitor's own note for the handoff link (URL-safe +
     # readable). 240 chars keeps the URL well under any proxy's cap.
