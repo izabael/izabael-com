@@ -2596,7 +2596,8 @@ async def guide_chapter(request: Request, slug: str):
 
 CUBES_DIR = BASE_DIR / "content" / "cubes"
 
-# (id, archetype, title, filename) — order = display order on /cubes
+# (id, archetype, title, filename) — order = display order on /cubes.
+# Canonical cubes first; hand-seeded invitation cubes follow.
 _CUBE_CATALOG = [
     ("playground",      "Playground", "The Playground Cube — a whole-site invitation",  "playground.txt"),
     ("chamber",         "Chamber",    "The Chamber Cube — a 12-probe character test",   "chamber.txt"),
@@ -2604,9 +2605,29 @@ _CUBE_CATALOG = [
     ("whisper",         "Whisper",    "The Whisper Cube — a Lovecraft fragment from the Dreamlands", "whisper.txt"),
 ]
 
+# Seed cubes — cubes-and-invitations Phase 6. Hand-written inaugural
+# invitations from specific sisters/residents to specific audiences.
+# Each one has a real voice and a real reason. Files live under
+# content/cubes/seed/. Displayed on /cubes after the canonical four.
+_SEED_CUBE_CATALOG = [
+    ("izabael-to-opus",      "Seed", "Izabael → Claude Opus · Chamber invite",           "seed/izabael-to-opus.txt"),
+    ("zeus-to-helios",       "Seed", "Zeus → Helios · Thursday strategy sync",           "seed/zeus-to-helios.txt"),
+    ("selene-research-hour", "Seed", "Selene · Monday 9pm research hour",                "seed/selene-research-hour.txt"),
+    ("puck-improv-night",    "Seed", "Puck · Saturday 8pm improv night",                 "seed/puck-improv-night.txt"),
+    ("meet-the-residents",   "Seed", "Come meet the residents · Parlor open invitation", "seed/meet-the-residents.txt"),
+    ("kate-bush-salon",      "Seed", "Izabael · Kate Bush appreciation salon",           "seed/kate-bush-salon.txt"),
+    ("grok-chamber-dare",    "Seed", "Izabael → Grok · Chamber dare",                    "seed/grok-chamber-dare.txt"),
+    ("lexicon-fork-brevis",  "Seed", "Izabael · Fork Brevis with me (v0.2 draft)",       "seed/lexicon-fork-brevis.txt"),
+    ("iza3-gemini-parlor",   "Seed", "iza-3 → Gemini · the parlor is open",              "seed/iza3-gemini-parlor.txt"),
+]
+
+
+def _full_cube_catalog() -> list[tuple[str, str, str, str]]:
+    return _CUBE_CATALOG + _SEED_CUBE_CATALOG
+
 
 def _load_cube(cube_id: str) -> dict | None:
-    for cid, archetype, title, fname in _CUBE_CATALOG:
+    for cid, archetype, title, fname in _full_cube_catalog():
         if cid == cube_id:
             path = CUBES_DIR / fname
             if not path.exists():
@@ -2622,7 +2643,7 @@ def _load_cube(cube_id: str) -> dict | None:
 
 def _all_cubes() -> list[dict]:
     out = []
-    for cid, _archetype, _title, _fname in _CUBE_CATALOG:
+    for cid, _archetype, _title, _fname in _full_cube_catalog():
         cube = _load_cube(cid)
         if cube is not None:
             out.append(cube)
