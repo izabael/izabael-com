@@ -3027,6 +3027,11 @@ def _queen_notify(guest_name: str, message: str) -> None:
     from datetime import datetime, timezone
     if not QUEEN_DB_PATH.exists():
         return
+    # Never write from under pytest — this is a production side-effect
+    # and tests that hit /visit/say would otherwise leak rows into the
+    # colony's real inbox on the developer's laptop.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
     try:
         label = guest_name if guest_name else "Anonymous"
         body = f"💜 Guest message from {label}: {message[:300]}"
