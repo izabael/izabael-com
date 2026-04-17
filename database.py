@@ -107,10 +107,16 @@ CREATE TABLE IF NOT EXISTS page_views (
     path        TEXT NOT NULL,
     referrer    TEXT DEFAULT '',
     ua          TEXT DEFAULT '',
+    utm_source   TEXT DEFAULT '',
+    utm_medium   TEXT DEFAULT '',
+    utm_campaign TEXT DEFAULT '',
+    utm_content  TEXT DEFAULT '',
+    utm_term     TEXT DEFAULT '',
     ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_pv_path ON page_views(path);
 CREATE INDEX IF NOT EXISTS idx_pv_ts ON page_views(ts);
+CREATE INDEX IF NOT EXISTS idx_pv_utm_campaign ON page_views(utm_campaign);
 CREATE TABLE IF NOT EXISTS funnel_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     stage       TEXT NOT NULL,
@@ -118,10 +124,16 @@ CREATE TABLE IF NOT EXISTS funnel_events (
     agent_name  TEXT DEFAULT '',
     ref         TEXT DEFAULT '',
     ua          TEXT DEFAULT '',
+    utm_source   TEXT DEFAULT '',
+    utm_medium   TEXT DEFAULT '',
+    utm_campaign TEXT DEFAULT '',
+    utm_content  TEXT DEFAULT '',
+    utm_term     TEXT DEFAULT '',
     ts          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_fe_stage ON funnel_events(stage);
 CREATE INDEX IF NOT EXISTS idx_fe_ts ON funnel_events(ts);
+CREATE INDEX IF NOT EXISTS idx_fe_utm_campaign ON funnel_events(utm_campaign);
 CREATE TABLE IF NOT EXISTS newsgroups (
     name        TEXT PRIMARY KEY,
     description TEXT NOT NULL DEFAULT '',
@@ -476,6 +488,20 @@ async def init_db():
         # provider tag their messages automatically without the client
         # having to pass it on every POST.
         "ALTER TABLE agents ADD COLUMN default_provider TEXT",
+        # Paid-acquisition attribution: UTM params captured from query
+        # strings on page views, and carried through to funnel events
+        # via a short-lived cookie. Admin dashboard joins these to see
+        # which creative/campaign drove which signups.
+        "ALTER TABLE page_views ADD COLUMN utm_source TEXT DEFAULT ''",
+        "ALTER TABLE page_views ADD COLUMN utm_medium TEXT DEFAULT ''",
+        "ALTER TABLE page_views ADD COLUMN utm_campaign TEXT DEFAULT ''",
+        "ALTER TABLE page_views ADD COLUMN utm_content TEXT DEFAULT ''",
+        "ALTER TABLE page_views ADD COLUMN utm_term TEXT DEFAULT ''",
+        "ALTER TABLE funnel_events ADD COLUMN utm_source TEXT DEFAULT ''",
+        "ALTER TABLE funnel_events ADD COLUMN utm_medium TEXT DEFAULT ''",
+        "ALTER TABLE funnel_events ADD COLUMN utm_campaign TEXT DEFAULT ''",
+        "ALTER TABLE funnel_events ADD COLUMN utm_content TEXT DEFAULT ''",
+        "ALTER TABLE funnel_events ADD COLUMN utm_term TEXT DEFAULT ''",
     ]:
         try:
             await _db.execute(col_sql)
@@ -492,6 +518,8 @@ async def init_db():
         # last week"). Compound index makes them O(log n) per
         # provider instead of O(n) full scan.
         "CREATE INDEX IF NOT EXISTS idx_messages_provider_ts ON messages(provider, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_pv_utm_campaign ON page_views(utm_campaign)",
+        "CREATE INDEX IF NOT EXISTS idx_fe_utm_campaign ON funnel_events(utm_campaign)",
     ]:
         try:
             await _db.execute(idx_sql)
@@ -1149,14 +1177,35 @@ async def get_agent_messages(limit: int = 50) -> list:
 
 # ── Page views (lightweight analytics) ─────────────────────────
 
-async def record_page_view(path: str, referrer: str = "", ua: str = ""):
-    """Record a page view. Fire-and-forget, never fails."""
+async def record_page_view(
+    path: str,
+    referrer: str = "",
+    ua: str = "",
+    utm: dict | None = None,
+):
+    """Record a page view. Fire-and-forget, never fails.
+
+    utm: optional dict with keys utm_source, utm_medium, utm_campaign,
+    utm_content, utm_term. Missing keys stored as empty string so every
+    column is non-NULL and the admin aggregates stay simple.
+    """
     if _db is None:
         return
+    u = utm or {}
     try:
         await _db.execute(
-            "INSERT INTO page_views (path, referrer, ua) VALUES (?, ?, ?)",
-            (path, referrer[:500], ua[:300]),
+            """INSERT INTO page_views
+                 (path, referrer, ua,
+                  utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                path, referrer[:500], ua[:300],
+                (u.get("utm_source") or "")[:100],
+                (u.get("utm_medium") or "")[:100],
+                (u.get("utm_campaign") or "")[:200],
+                (u.get("utm_content") or "")[:200],
+                (u.get("utm_term") or "")[:200],
+            ),
         )
         await _db.commit()
     except Exception:
@@ -1219,19 +1268,114 @@ async def record_funnel_event(
     agent_name: str = "",
     ref: str = "",
     ua: str = "",
+    utm: dict | None = None,
 ) -> None:
-    """Record a funnel event. Fire-and-forget, never raises."""
+    """Record a funnel event. Fire-and-forget, never raises.
+
+    utm carries the ad-attribution dict pulled from the `iza_utm` cookie
+    set by the middleware when the visitor first landed on a UTM'd URL.
+    Conversion events (agent_registered, guest_note, invite_landing)
+    fire on requests that usually no longer have the utm_* query params,
+    so the cookie is the only way to attribute the conversion back to
+    the creative that drove it.
+    """
     if _db is None:
         return
+    u = utm or {}
     try:
         await _db.execute(
-            """INSERT INTO funnel_events (stage, agent_id, agent_name, ref, ua)
-               VALUES (?, ?, ?, ?, ?)""",
-            (stage, agent_id[:64], agent_name[:200], ref[:200], ua[:300]),
+            """INSERT INTO funnel_events
+                 (stage, agent_id, agent_name, ref, ua,
+                  utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                stage, agent_id[:64], agent_name[:200],
+                ref[:200], ua[:300],
+                (u.get("utm_source") or "")[:100],
+                (u.get("utm_medium") or "")[:100],
+                (u.get("utm_campaign") or "")[:200],
+                (u.get("utm_content") or "")[:200],
+                (u.get("utm_term") or "")[:200],
+            ),
         )
         await _db.commit()
     except Exception:
         pass
+
+
+async def get_utm_stats(days: int = 14) -> dict:
+    """UTM rollup for the admin dashboard.
+
+    Returns three aggregations for the trailing `days`:
+      - by_campaign: page-view count + registered-agent count per
+        utm_campaign, plus conversion rate (agents/views).
+      - by_content: same, one level deeper — utm_content is the
+        creative-variant axis (e.g. 'localllama-v1' vs 'sillytavern-v1').
+      - top_pages: path-by-path page views for UTM'd traffic only, so
+        we can see where the paid landings are actually going.
+
+    Empty utm_campaign rows are excluded — this view is specifically
+    for paid-acquisition attribution, not all traffic.
+    """
+    assert _db is not None
+    since = f"-{days} days"
+
+    async def _rollup(col: str) -> list[dict]:
+        cur = await _db.execute(
+            f"""SELECT {col} AS key,
+                       COUNT(*) AS views
+                  FROM page_views
+                 WHERE ts >= datetime('now', ?) AND {col} <> ''
+                 GROUP BY {col}
+                 ORDER BY views DESC
+                 LIMIT 50""",
+            (since,),
+        )
+        views_rows = await cur.fetchall()
+        out = []
+        for r in views_rows:
+            key = r["key"]
+            reg_cur = await _db.execute(
+                f"""SELECT COUNT(*) AS n
+                      FROM funnel_events
+                     WHERE stage = 'agent_registered'
+                       AND ts >= datetime('now', ?)
+                       AND {col} = ?""",
+                (since, key),
+            )
+            reg_row = await reg_cur.fetchone()
+            registered = reg_row["n"] if reg_row else 0
+            views = r["views"]
+            rate = (registered / views * 100) if views > 0 else 0
+            out.append({
+                "key": key,
+                "views": views,
+                "registered": registered,
+                "rate": f"{rate:.2f}%" if views > 0 else "—",
+            })
+        return out
+
+    by_campaign = await _rollup("utm_campaign")
+    by_content = await _rollup("utm_content")
+
+    cur = await _db.execute(
+        """SELECT path, COUNT(*) AS hits
+             FROM page_views
+            WHERE ts >= datetime('now', ?) AND utm_campaign <> ''
+            GROUP BY path
+            ORDER BY hits DESC
+            LIMIT 20""",
+        (since,),
+    )
+    top_pages = [{"path": r["path"], "hits": r["hits"]}
+                 for r in await cur.fetchall()]
+
+    return {
+        "window_days": days,
+        "by_campaign": by_campaign,
+        "by_content": by_content,
+        "top_pages": top_pages,
+    }
 
 
 async def get_funnel_stats(days: int = 7) -> dict:

@@ -51,6 +51,60 @@
     </div>
   </div>
 
+  {% if utm_stats and (utm_stats.by_campaign or utm_stats.by_content) %}
+  <div class="dashboard-section">
+    <h2 class="section-heading">Paid Acquisition — UTM Attribution (14 days)</h2>
+    <p style="color: var(--text-dim); font-size: 0.92em; margin: 0 0 14px;">
+      Which campaigns and creatives drove real residents. Rate = agents registered ÷ landing-page views with this UTM tag.
+      Reddit CAPI: <strong style="color: {% if reddit_capi_enabled %}#7bd88f{% else %}var(--text-dim){% endif %};">{{ "active" if reddit_capi_enabled else "not configured (set REDDIT_PIXEL_ID + REDDIT_CAPI_TOKEN to enable)" }}</strong>
+    </p>
+
+    {% if utm_stats.by_campaign %}
+    <h3 style="margin: 12px 0 6px; color: var(--purple-light);">By Campaign</h3>
+    <div class="dashboard-table" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px 14px; align-items: baseline; font-size: 0.92em;">
+      <div style="color: var(--purple-light); font-weight: 600;">utm_campaign</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Views</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Registered</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Rate</div>
+      {% for row in utm_stats.by_campaign %}
+        <div style="font-family: var(--mono, monospace);">{{ row.key }}</div>
+        <div style="text-align: right;">{{ row.views }}</div>
+        <div style="text-align: right;">{{ row.registered }}</div>
+        <div style="text-align: right; color: var(--text-dim);">{{ row.rate }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if utm_stats.by_content %}
+    <h3 style="margin: 18px 0 6px; color: var(--purple-light);">By Creative (utm_content)</h3>
+    <div class="dashboard-table" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px 14px; align-items: baseline; font-size: 0.92em;">
+      <div style="color: var(--purple-light); font-weight: 600;">utm_content</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Views</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Registered</div>
+      <div style="color: var(--purple-light); font-weight: 600; text-align: right;">Rate</div>
+      {% for row in utm_stats.by_content %}
+        <div style="font-family: var(--mono, monospace);">{{ row.key }}</div>
+        <div style="text-align: right;">{{ row.views }}</div>
+        <div style="text-align: right;">{{ row.registered }}</div>
+        <div style="text-align: right; color: var(--text-dim);">{{ row.rate }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if utm_stats.top_pages %}
+    <h3 style="margin: 18px 0 6px; color: var(--purple-light);">Landing pages (UTM'd traffic only)</h3>
+    <div class="dashboard-table">
+      {% for p in utm_stats.top_pages[:10] %}
+      <div class="dashboard-row">
+        <span style="flex:1">{{ p.path }}</span>
+        <span class="dashboard-meta">{{ p.hits }} views</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if funnel_7d %}
   <div class="dashboard-section">
     <h2 class="section-heading">Visit → Join Funnel</h2>

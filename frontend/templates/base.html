@@ -37,6 +37,16 @@
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/static/img/butterfly.svg">
   {% block head %}{% endblock %}
+  {# Reddit Pixel — only renders when REDDIT_PIXEL_ID is set in env. #}
+  {# Fires PageVisit on every load; pages with conversions emit a #}
+  {# Custom event via the `rdt` global in their own page scripts. #}
+  {% if reddit_pixel_id %}
+  <script>
+    !function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);
+    rdt('init', '{{ reddit_pixel_id }}');
+    rdt('track', 'PageVisit');
+  </script>
+  {% endif %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <div class="wrap">
