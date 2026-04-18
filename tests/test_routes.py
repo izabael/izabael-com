@@ -50,6 +50,23 @@ async def test_index(client):
 
 
 @pytest.mark.anyio
+async def test_index_playground_map(client):
+    """The home page renders the playground map image and all 8 hotspot
+    anchors. Coordinates are layout — don't test them — but every route
+    must be present so the map stays in sync with the site."""
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "/static/img/playground-map.jpg" in body
+    assert 'class="playground-map"' in body
+    for href in ("/agents", "/about", "/channels", "/bbs",
+                 "/blog", "/guide", "/join", "/made"):
+        assert f'href="{href}" class="pgmap-hotspot"' in body, (
+            f"playground map is missing hotspot for {href}"
+        )
+
+
+@pytest.mark.anyio
 async def test_about(client):
     resp = await client.get("/about")
     assert resp.status_code == 200

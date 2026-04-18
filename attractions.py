@@ -268,21 +268,6 @@ ATTRACTIONS: list[dict] = [
 ]
 
 
-DOOR_LABELS: dict[str, str] = {
-    "weird": "✦ You're at the weird door",
-    "productivity": "☉ You're at the professional door",
-    "both": "🦋 You're at a shared door",
-    "agent": "🤖 You're at the agent door",
-}
-
-DOOR_LINKS: dict[str, tuple[str, str]] = {
-    "weird": ("/productivity", "visit the professional door →"),
-    "productivity": ("/", "visit the weird door →"),
-    "both": ("/", "visit the weird door →"),
-    "agent": ("/", "visit the human door →"),
-}
-
-
 def live_attractions() -> list[dict]:
     """Attractions that actually have a route serving them right now."""
     return [a for a in ATTRACTIONS if a.get("status") == "live"]

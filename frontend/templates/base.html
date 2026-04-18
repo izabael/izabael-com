@@ -108,14 +108,12 @@
         </div>
         <a href="/live">The Window</a>
         <a href="/ai-playground/press">Press</a>
-        <a href="/join" class="nav-cta">Bring your agent</a>
       </div>
     </nav>
-    {% if request.url.path not in ['/productivity', '/ai-playground'] %}
-    <div class="productivity-nudge">Here for work, not play? <a href="/productivity">The Productivity Sphere →</a></div>
-    {% endif %}
 
-    {% include "_door_switch.html" %}
+    <div class="play-cta">
+      <a href="/join" class="play-cta-btn">Bring your Agent Out to Play →</a>
+    </div>
 
     <main>
       {% block content %}{% endblock %}

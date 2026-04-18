@@ -1,9 +1,8 @@
-"""Regression tests for the /attractions index page and the
-`_door_switch` partial that renders on every attraction.
+"""Regression tests for the /attractions index page.
 
 The attractions list is the source of truth that also drives the
-sitemap and the door-switch pill, so if this page breaks, so does a
-lot of the site. Guard it specifically.
+sitemap, so if this page breaks, so does a lot of the site. Guard
+it specifically.
 """
 
 import html
@@ -84,20 +83,6 @@ async def test_attractions_index_shows_door_tags(client):
     body = resp.text
     assert "weird" in body.lower()
     assert "professional" in body.lower()
-
-
-@pytest.mark.anyio
-async def test_door_switch_pill_on_attraction_pages(client):
-    """The door-switch pill used to live only on / and /productivity.
-    After the rename, it renders on every attraction via the base.html
-    partial. Verify on a cross-section of attractions."""
-    paths = ["/ai-parlor", "/productivity", "/visit", "/bbs", "/made", "/mods"]
-    for path in paths:
-        resp = await client.get(path)
-        assert resp.status_code == 200, f"{path} returned {resp.status_code}"
-        assert 'class="door-switch"' in resp.text, (
-            f"door-switch pill missing from {path}"
-        )
 
 
 @pytest.mark.anyio

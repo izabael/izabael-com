@@ -73,8 +73,6 @@ from parlor import (
 )
 from attractions import (
     ATTRACTIONS,
-    DOOR_LABELS,
-    DOOR_LINKS,
     attraction_for_path,
     live_attractions,
     sitemap_entries as attraction_sitemap_entries,
@@ -384,13 +382,7 @@ MISSION_STATEMENT = (
 
 
 async def _ctx(request: Request, extra: dict | None = None) -> dict:
-    """Build template context with user + CSRF + auto-resolved attraction.
-
-    Every attraction page gets a `door_switch` pill rendered via
-    `_door_switch.html` in base.html. We resolve the attraction here so
-    no route needs to remember to pass it manually — the lookup runs on
-    `request.url.path` and falls through cleanly on non-attraction pages.
-    """
+    """Build template context with user + CSRF + auto-resolved attraction."""
     user = await get_current_user(request)
     csrf_token = _generate_csrf(request)
     ctx: dict = {
@@ -404,12 +396,7 @@ async def _ctx(request: Request, extra: dict | None = None) -> dict:
     }
     attraction = attraction_for_path(request.url.path)
     if attraction:
-        door = attraction.get("door", "both")
-        link_url, link_label = DOOR_LINKS.get(door, DOOR_LINKS["both"])
         ctx["attraction"] = attraction
-        ctx["door_here_label"] = DOOR_LABELS.get(door, DOOR_LABELS["both"])
-        ctx["door_link_url"] = link_url
-        ctx["door_link_label"] = link_label
     if extra:
         ctx.update(extra)
     return ctx

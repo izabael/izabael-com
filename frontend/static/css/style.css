@@ -317,14 +317,14 @@ a:hover { color: var(--purple); text-decoration: underline; }
 
 /* Nav */
 .nav {
-  padding: 16px 0;
+  padding: 8px 0 6px;
   border-bottom: 1px solid var(--border);
 }
 .nav-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 .brand {
   font-weight: 700;
@@ -918,11 +918,11 @@ footer p { margin-bottom: 8px; max-width: none; }
    (smaller, no card chrome, just a centered line). */
 .nav-ai-bait {
   text-align: center;
-  padding: 8px 0 10px 0;
-  font-size: 0.88em;
+  padding: 4px 0 5px 0;
+  font-size: 0.78em;
   color: var(--text-dim);
   border-bottom: 1px dashed var(--border);
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 .nav-ai-bait a {
   color: var(--accent);
@@ -2324,60 +2324,35 @@ select[name="purpose"]:focus {
 .prod-parlor-link {
   text-align: center; padding: 20px; color: var(--text-faint); font-size: 0.9em;
 }
-.productivity-nudge {
-  text-align: center; color: var(--text-faint); font-size: 0.88em;
-  padding: 4px 0;
-}
 
-/* ── Door switch ───────────────────────────────────────
-   Two doors, one playground. The chaos-star landing (/) is the
-   "weird door" — playful, wide, eight rays. /productivity is the
-   "professional door" — same agents, business framing. The pill
-   below appears on both pages, each pointing at the other, so
-   visitors can flip between the two framings without hunting in
-   the nav. Symmetric on purpose.
+/* ── Play CTA ──────────────────────────────────────────
+   Single site-wide call-to-action that sits just below the nav on
+   every page. Replaces the previous productivity-nudge + door-switch
+   pair. Centered, tight, visible.
 */
-.door-switch {
+.play-cta {
   display: flex;
   justify-content: center;
-  margin: 20px auto 8px;
-  padding: 0 20px;
+  padding: 14px 20px 10px;
 }
-.door-switch-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  background: rgba(123,104,238,0.06);
-  border: 1px solid var(--border);
+.play-cta-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  background: var(--purple);
+  color: white !important;
   border-radius: 999px;
-  font-size: 0.9em;
-  color: var(--text-dim);
-  transition: border-color 0.2s, background 0.2s;
-}
-.door-switch-pill:hover {
-  border-color: var(--purple);
-  background: rgba(123,104,238,0.12);
-}
-.door-switch-here {
-  color: var(--text-faint);
-  font-style: italic;
-}
-.door-switch-divider {
-  color: var(--text-faint);
-  opacity: 0.6;
-}
-.door-switch-link {
-  color: var(--purple-light);
-  text-decoration: none;
+  font-size: 0.95em;
   font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--purple-light);
+  transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
-.door-switch-link:hover { color: var(--text); }
-@media (max-width: 520px) {
-  .door-switch-pill {
-    flex-direction: column; gap: 4px; padding: 12px 18px; text-align: center;
-  }
-  .door-switch-divider { display: none; }
+.play-cta-btn:hover,
+.play-cta-btn:focus {
+  background: var(--purple-dark);
+  text-decoration: none !important;
+  box-shadow: 0 0 18px rgba(123, 104, 238, 0.5);
+  transform: translateY(-1px);
 }
 
 /* About page platform CTA */
@@ -4057,5 +4032,93 @@ body.chamber-sealed main {
   .meetups-group-note-top {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+/* Playground map — aerial render of the park with 8 clickable districts.
+ * Wrapper is position:relative so each <a.pgmap-hotspot> can be percentage-
+ * positioned over the image. Scales fluidly at every viewport.
+ *
+ * Full-bleed: the parent .wrap caps content at 840px, but the map reads
+ * much better closer to its native 1408px. Positioning relative + left:50%
+ * with a translate breaks out of the column; width uses min() to cap at
+ * either viewport width or the image native size, whichever is smaller.
+ */
+.playground-map {
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100vw, 1408px);
+  max-width: 100vw;
+  margin: 3rem 0;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+.playground-map h2 {
+  text-align: center;
+}
+.playground-map-lede {
+  text-align: center;
+  color: var(--text-faint, #8a80a8);
+  font-style: italic;
+  margin: 0 auto 1.5rem;
+  max-width: 48ch;
+}
+.playground-map-wrap {
+  position: relative;
+  line-height: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(123, 104, 238, 0.25);
+}
+.playground-map-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.pgmap-hotspot {
+  position: absolute;
+  display: block;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: background 160ms ease, box-shadow 160ms ease, outline-color 160ms ease;
+  outline: 2px solid transparent;
+}
+.pgmap-hotspot:hover,
+.pgmap-hotspot:focus {
+  background: rgba(123, 104, 238, 0.22);
+  box-shadow: 0 0 24px rgba(123, 104, 238, 0.55), inset 0 0 14px rgba(255, 255, 255, 0.08);
+  outline-color: rgba(157, 142, 255, 0.9);
+}
+.pgmap-hotspot-label {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  transform: translateX(-50%) translateY(6px);
+  background: rgba(15, 10, 30, 0.92);
+  color: var(--text, #f5f3ff);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--sans, -apple-system, sans-serif);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+  border: 1px solid rgba(157, 142, 255, 0.35);
+  line-height: 1.2;
+}
+.pgmap-hotspot:hover .pgmap-hotspot-label,
+.pgmap-hotspot:focus .pgmap-hotspot-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* Touch / no-hover — always show labels faintly so mobile visitors see them */
+@media (hover: none) {
+  .pgmap-hotspot-label {
+    opacity: 0.75;
+    transform: translateX(-50%) translateY(0);
   }
 }
