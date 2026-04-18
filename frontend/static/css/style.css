@@ -3422,6 +3422,8 @@ body.chamber-sealed main {
   .chamber-submit-btn,
   .chamber-share-btn,
   .chamber-retry-btn { width: 100%; text-align: center; }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    CUBES — /make-a-cube generator + /cubes/{token} view
    ═══════════════════════════════════════════════════════════════ */
@@ -4043,22 +4045,12 @@ body.chamber-sealed main {
 
 /* Playground map — aerial render of the park with 8 clickable districts.
  * Wrapper is position:relative so each <a.pgmap-hotspot> can be percentage-
- * positioned over the image. Scales fluidly at every viewport.
- *
- * Full-bleed: the parent .wrap caps content at 840px, but the map reads
- * much better closer to its native 1408px. Positioning relative + left:50%
- * with a translate breaks out of the column; width uses min() to cap at
- * either viewport width or the image native size, whichever is smaller.
+ * positioned over the image. Scales fluidly at every viewport — the map
+ * fills the .wrap on desktop (up to 1100) and shrinks to viewport width
+ * on mobile, and the percentage hotspots follow the image at every size.
  */
 .playground-map {
-  position: relative;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(100vw, 1408px);
-  max-width: 100vw;
   margin: 3rem 0;
-  padding: 0 1rem;
-  box-sizing: border-box;
 }
 .playground-map h2 {
   text-align: center;
