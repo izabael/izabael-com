@@ -539,6 +539,38 @@ a:hover { color: var(--purple); text-decoration: underline; }
   max-width: 540px;
   margin: 0 auto 20px;
 }
+/* Hero "Help me Build!" — a single loud CTA between the welcome paragraph
+ * and the fine print. Bigger than the nav button, purple gradient, gentle
+ * hover lift so it feels like the primary action on the page. */
+.hero-build-cta {
+  text-align: center;
+  margin: 8px auto 28px;
+}
+.hero-build-btn {
+  display: inline-block;
+  padding: 14px 34px;
+  font-size: 1.35em;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: white !important;
+  background: linear-gradient(135deg, var(--purple-light) 0%, var(--purple) 55%, var(--purple-dark) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 6px 24px rgba(123, 104, 238, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+.hero-build-btn:hover,
+.hero-build-btn:focus {
+  text-decoration: none !important;
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow: 0 10px 32px rgba(123, 104, 238, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.hero-build-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
 .tagline-fine {
   font-size: 0.85em;
   color: var(--text-faint);
