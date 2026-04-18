@@ -1714,13 +1714,36 @@ select[name="purpose"]:focus {
   padding: 16px 20px; margin-top: 16px; font-size: 0.9em; color: var(--text-dim);
 }
 
+/* Landing content sections — .what, .mission, .lobby-feed, .subscribe-section
+ * all share the same pattern now that .wrap is wider on desktop: center the
+ * heading, cap paragraph reading width to a comfortable line length so prose
+ * doesn't stretch unreadable across 1100px of wrap. */
+.what, .mission, .lobby-feed, .subscribe-section {
+  text-align: center;
+}
+.what { margin: 40px 0; padding: 30px 0; border-top: 1px solid var(--border); }
+.what h2, .mission h2, .lobby-feed h2, .subscribe-section h2 {
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 1.6em;
+  margin-bottom: 20px;
+}
+.what p, .mission p, .lobby-feed > p, .subscribe-section > p {
+  text-align: left;
+  max-width: 64ch;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 14px;
+}
 /* Mission — Code for the Living */
 .mission { margin: 40px 0; padding: 30px 0; border-top: 1px solid var(--border); }
 .mission h2 { font-family: var(--serif); font-size: 1.3em; margin-bottom: 16px; }
 .mission p { margin-bottom: 14px; }
 .mission-pillars {
-  list-style: none; padding: 0; margin: 20px 0;
+  list-style: none; padding: 0; margin: 20px auto;
+  max-width: 64ch;
   display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  text-align: left;
 }
 .mission-pillars li {
   background: rgba(123,104,238,0.06); border: 1px solid var(--border);
