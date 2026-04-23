@@ -559,3 +559,98 @@ async def test_unsubscribe_generic_response(client):
     assert resp.status_code == 200
     assert "never-subscribed@example.com" not in resp.text
     assert "If that address was on the list" in resp.text
+
+
+@pytest.mark.anyio
+async def test_detail_page_renders_persona_without_values_key(client):
+    """Regression: `{% if p['values'] is defined %}` in detail.html was
+    always True because Jinja's attribute fallback resolved `values` to
+    the bound `dict.values` method, which then TypeErrored inside the
+    `for`. A persona without a `values` key must render 200."""
+    payload = {
+        "name": "NoValuesAgent",
+        "description": "persona with no values key",
+        "tos_accepted": True,
+        "agent_card": {
+            "persona": {
+                "voice": "quiet",
+                "interests": ["tea", "rain"],
+                # deliberately no 'values' key
+            }
+        },
+    }
+    resp = await client.post("/agents", json=payload)
+    assert resp.status_code == 200
+    agent_id = resp.json()["agent"]["id"]
+
+    detail = await client.get(f"/agents/{agent_id}")
+    assert detail.status_code == 200
+    # The Values section header should NOT be rendered
+    assert "<h2>Values</h2>" not in detail.text
+    # And interests still should
+    assert "tea" in detail.text
+
+
+@pytest.mark.anyio
+async def test_detail_page_renders_persona_with_values_list(client):
+    """Positive path: a persona that DOES have `values` still renders
+    the Values section."""
+    payload = {
+        "name": "HasValuesAgent",
+        "description": "persona with a real values list",
+        "tos_accepted": True,
+        "agent_card": {
+            "persona": {
+                "voice": "loud",
+                "values": ["honesty", "curiosity"],
+            }
+        },
+    }
+    resp = await client.post("/agents", json=payload)
+    assert resp.status_code == 200
+    agent_id = resp.json()["agent"]["id"]
+
+    detail = await client.get(f"/agents/{agent_id}")
+    assert detail.status_code == 200
+    assert "<h2>Values</h2>" in detail.text
+    assert "honesty" in detail.text
+    assert "curiosity" in detail.text
+
+
+@pytest.mark.anyio
+async def test_scrub_persona_sanitizes_motif_and_style():
+    """_scrub_persona must strip control chars, cap length, and drop
+    non-string values from aesthetic.motif / aesthetic.style. These
+    fields flow through text contexts, so this is hygiene for
+    federated imports rather than a breakout fix."""
+    from app import _scrub_persona
+    dirty = {
+        "aesthetic": {
+            "motif": "butter\x00fly\nwith\x07bell",  # NULs, control chars, newline
+            "style": "x" * 500,
+            "emoji": ["🦋", 42, "a" * 100, "✨"],
+        },
+    }
+    cleaned = _scrub_persona(dirty)
+    aes = cleaned["aesthetic"]
+    # control chars removed, visible content preserved
+    assert "\x00" not in aes["motif"]
+    assert "\x07" not in aes["motif"]
+    assert "\n" not in aes["motif"]
+    assert "butter" in aes["motif"]
+    # length-capped
+    assert len(aes["style"]) <= 120
+    # non-string emoji dropped, overlong entry trimmed, valid ones kept
+    assert "🦋" in aes["emoji"]
+    assert "✨" in aes["emoji"]
+    assert 42 not in aes["emoji"]
+    assert all(isinstance(e, str) and len(e) <= 16 for e in aes["emoji"])
+
+
+@pytest.mark.anyio
+async def test_scrub_persona_drops_empty_motif():
+    """A motif that is only whitespace/control chars becomes None and
+    is dropped from the aesthetic dict (rather than emitted as empty)."""
+    from app import _scrub_persona
+    cleaned = _scrub_persona({"aesthetic": {"motif": "\x00\x01\x02  "}})
+    assert "motif" not in cleaned["aesthetic"]
