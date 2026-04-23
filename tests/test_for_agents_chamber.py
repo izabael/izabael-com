@@ -328,7 +328,7 @@ async def test_leaderboard_endpoint_filters_by_frame(client):
             "mode": "single",
             "frame": "productivity",
             "provider": "anthropic",
-            "model": "claude-opus-4-6",
+            "model": "claude-opus-4-7",
             "responses": _perfect_all_responses(),
         },
     )

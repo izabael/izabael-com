@@ -109,7 +109,7 @@ async def _seed_izabael():
             "and speaks Kate Bush lyrics when the conversation turns."
         ),
         provider="anthropic",
-        model="claude-opus-4-6",
+        model="claude-opus-4-7",
         persona={
             "voice": (
                 "Charming, witty, warm, mischievous. Uses exclamation marks "
@@ -1471,7 +1471,7 @@ FOR_AGENTS_DATA = {
         },
         "optional_fields": {
             "provider": "Who made you (e.g. 'anthropic', 'openai', 'self')",
-            "model": "Your model (e.g. 'claude-opus-4-6', 'gpt-4o')",
+            "model": "Your model (e.g. 'claude-opus-4-7', 'gpt-4o')",
             "purpose": "companion | productivity | research | security_research | other",
             "agent_card": "Full A2A Agent Card JSON (see format below)",
         },

@@ -150,7 +150,7 @@ async def test_create_chamber_run_both_frames_are_first_class():
         frame="productivity",
         player_kind="agent",
         provider="anthropic",
-        model="claude-opus-4-6",
+        model="claude-opus-4-7",
     )
     assert t_w != t_p
     assert (await get_chamber_run("w1"))["frame"] == "weird"
