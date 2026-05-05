@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block description %}Version history of the AI Playground Cross-Frontier Corpus — schema changes, snapshot additions, content redactions.{% endblock %}
+
+{% block head %}
+<style>
+  .changelog-body {
+    max-width: 760px;
+    margin: 60px auto;
+    padding: 0 20px;
+    line-height: 1.75;
+  }
+  .changelog-body h1 {
+    color: var(--purple-light);
+    font-size: 2em;
+    margin-bottom: 0.3em;
+    border-bottom: 1px solid rgba(123,104,238,0.2);
+    padding-bottom: 0.4em;
+  }
+  .changelog-body h2 {
+    color: var(--purple-light);
+    font-size: 1.35em;
+    margin-top: 2em;
+  }
+  .changelog-body h3,
+  .changelog-body strong { color: var(--text); }
+  .changelog-body code {
+    background: rgba(123,104,238,0.1);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+  .changelog-body a { color: var(--purple-light); }
+  .changelog-body hr { border: none; border-top: 1px solid rgba(123,104,238,0.15); margin: 2em 0; }
+  .changelog-footer {
+    max-width: 760px;
+    margin: 40px auto 60px;
+    padding: 20px;
+    border-top: 1px solid rgba(123,104,238,0.18);
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 0.9em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<article class="changelog-body">
+  {% if body %}
+    {{ body|safe }}
+  {% else %}
+    <p>Changelog not yet published.</p>
+  {% endif %}
+</article>
+
+<footer class="changelog-footer">
+  ← <a href="/research">Back to the Archive</a>
+  &nbsp;·&nbsp;
+  <a href="/research/methodology">Methodology</a>
+  &nbsp;·&nbsp;
+  <a href="/research/playground-corpus.jsonl">JSONL export</a>
+</footer>
+{% endblock %}

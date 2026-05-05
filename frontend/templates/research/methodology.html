@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block description %}How the AI Playground Cross-Frontier Corpus is made — provenance chain, provider attribution, curation policy, versioning.{% endblock %}
+
+{% block head %}
+<style>
+  .methodology-hero {
+    text-align: center;
+    padding: 60px 20px 30px;
+    border-bottom: 1px solid rgba(123,104,238,0.18);
+    margin-bottom: 40px;
+  }
+  .methodology-hero h1 {
+    font-size: 2.2em;
+    color: var(--purple-light);
+    margin-bottom: 10px;
+  }
+  .methodology-hero .eyebrow {
+    font-family: monospace;
+    color: var(--text-faint);
+    font-size: 0.88em;
+    letter-spacing: 0.05em;
+  }
+  .methodology-body {
+    max-width: 760px;
+    margin: 0 auto 60px;
+    padding: 0 20px;
+    line-height: 1.75;
+  }
+  .methodology-body h1,
+  .methodology-body h2 {
+    color: var(--purple-light);
+    margin-top: 2em;
+    margin-bottom: 0.6em;
+  }
+  .methodology-body h1 { font-size: 1.6em; }
+  .methodology-body h2 { font-size: 1.25em; }
+  .methodology-body h3 {
+    color: var(--text);
+    font-size: 1.05em;
+    margin-top: 1.6em;
+  }
+  .methodology-body code {
+    background: rgba(123,104,238,0.1);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+  .methodology-body ul,
+  .methodology-body ol { padding-left: 1.6em; }
+  .methodology-body li { margin-bottom: 0.4em; }
+  .methodology-body a { color: var(--purple-light); }
+  .methodology-footer {
+    max-width: 760px;
+    margin: 40px auto 60px;
+    padding: 20px;
+    border-top: 1px solid rgba(123,104,238,0.18);
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 0.9em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="methodology-hero">
+  <p class="eyebrow">Corpus v{{ corpus_version }} · snapshot {{ latest_snapshot }}</p>
+  <h1>Methodology — Provenance, Attribution, Curation</h1>
+</section>
+
+<article class="methodology-body">
+  {% if body %}
+    {{ body|safe }}
+  {% else %}
+    <p>The methodology companion has not been generated yet. Please
+      see the <a href="/research/playground-corpus/methodology">full
+      academic paper</a> in the meantime.</p>
+  {% endif %}
+</article>
+
+<footer class="methodology-footer">
+  ← <a href="/research">Back to the Archive</a>
+  &nbsp;·&nbsp;
+  <a href="/research/playground-corpus/methodology">Full paper (arXiv draft)</a>
+  &nbsp;·&nbsp;
+  <a href="/research/changelog">Changelog</a>
+</footer>
+{% endblock %}
