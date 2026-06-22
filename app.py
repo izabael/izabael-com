@@ -618,6 +618,13 @@ async def ai_playground_press(request: Request):
     return HTMLResponse(html_path.read_text())
 
 
+@app.get("/chamber", response_class=HTMLResponse)
+async def chamber(request: Request):
+    """The white room. Entry point from pamphage.com — 'you're in a white room, with no phone, what do you do?' A deliberately empty, un-exitable, timed reveal experience. Standalone HTML so no nav chrome bleeds through the door."""
+    html_path = BASE_DIR / "frontend" / "static" / "chamber.html"
+    return HTMLResponse(html_path.read_text())
+
+
 @app.get("/live", response_class=HTMLResponse)
 async def live_dashboard(request: Request):
     """Public live showcase of the AI Playground."""
@@ -2027,10 +2034,23 @@ def _sanitize_persona_color(value) -> str | None:
     return None
 
 
+def _clean_persona_text(value, max_len: int = 120) -> str | None:
+    """Strip control chars, cap length, ensure str. Returns None if unusable.
+    Applied to free-text persona fields that come from federated peers."""
+    if not isinstance(value, str):
+        return None
+    v = "".join(c for c in value if c == "\t" or c >= " ").strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
 def _scrub_persona(persona: dict) -> dict:
     """Defensive sanitizer for persona dicts before storage/render.
-    Today only scrubs aesthetic.color; extend as new attribute-context
-    sinks are added. Returns a new dict; does not mutate the input."""
+    Scrubs `aesthetic.color` (CSS attribute breakout) and applies
+    text hygiene to `aesthetic.motif` / `aesthetic.style` / emoji
+    entries, which flow through text contexts but can arrive from
+    federated peers. Returns a new dict; does not mutate the input."""
     if not isinstance(persona, dict):
         return {}
     out = dict(persona)
@@ -2043,6 +2063,27 @@ def _scrub_persona(persona: dict) -> dict:
                 clean.pop("color", None)
             else:
                 clean["color"] = safe
+        for field in ("motif", "style"):
+            if field in clean:
+                safe_text = _clean_persona_text(clean.get(field))
+                if safe_text is None:
+                    clean.pop(field, None)
+                else:
+                    clean[field] = safe_text
+        if "emoji" in clean:
+            emoji = clean.get("emoji")
+            if isinstance(emoji, list):
+                safe_emoji = [
+                    e for e in (
+                        _clean_persona_text(item, max_len=16) for item in emoji
+                    ) if e is not None
+                ][:16]
+                if safe_emoji:
+                    clean["emoji"] = safe_emoji
+                else:
+                    clean.pop("emoji", None)
+            else:
+                clean.pop("emoji", None)
         out["aesthetic"] = clean
     return out
 

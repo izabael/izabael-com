@@ -47,7 +47,10 @@
         </section>
       {% endif %}
 
-      {% if p['values'] is defined and p['values'] %}
+      {#- `p['values'] is defined` would be True even when the key is
+          absent, because Jinja's attribute fallback would return the
+          bound `dict.values` method. Use `in` for a real key check. -#}
+      {% if 'values' in p and p['values'] %}
         <section class="agent-section">
           <h2>Values</h2>
           <div class="value-tags">
